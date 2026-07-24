@@ -1,0 +1,66 @@
+{
+  "output_path": "/home/wz/luminous/docs/front_design/luminous_frontend_design_spec_v1.md",
+  "created_at": "2026-07-23T22:19:29",
+  "source_count": 12,
+  "chars": 60897,
+  "lines": 1686,
+  "qa": {
+    "main_direction_crystal_solarium": {
+      "missing": [],
+      "passed": true
+    },
+    "non_tool_chat": {
+      "missing": [],
+      "passed": true
+    },
+    "layout_desktop_mobile": {
+      "missing": [],
+      "passed": true
+    },
+    "visual_tokens": {
+      "missing": [],
+      "passed": true
+    },
+    "chat_api": {
+      "missing": [],
+      "passed": true
+    },
+    "state_presence": {
+      "missing": [],
+      "passed": true
+    },
+    "memory": {
+      "missing": [],
+      "passed": true
+    },
+    "outbox": {
+      "missing": [],
+      "passed": true
+    },
+    "schedule_notifications": {
+      "missing": [],
+      "passed": true
+    },
+    "life_flow": {
+      "missing": [],
+      "passed": true
+    },
+    "actions": {
+      "missing": [],
+      "passed": true
+    },
+    "audit_debug": {
+      "missing": [],
+      "passed": true
+    },
+    "accessibility_motion": {
+      "missing": [],
+      "passed": true
+    },
+    "refactor_acceptance": {
+      "missing": [],
+      "passed": true
+    }
+  },
+  "all_passed": true
+}

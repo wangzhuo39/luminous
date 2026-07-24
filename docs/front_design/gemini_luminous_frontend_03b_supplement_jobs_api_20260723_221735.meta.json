@@ -1,0 +1,22 @@
+{
+  "model": "gemini-3.1-pro-preview",
+  "endpoint_base": "https://maoapi.org",
+  "created_at": "2026-07-23T22:18:21",
+  "finish_reason": "stop",
+  "response_chars": 1926,
+  "response_lines": 32,
+  "prompt_path": "/home/wz/luminous/docs/front_design/gemini_luminous_frontend_03b_supplement_jobs_api_20260723_221735.prompt.md",
+  "output_path": "/home/wz/luminous/docs/front_design/gemini_luminous_frontend_03b_supplement_jobs_api_20260723_221735.md",
+  "qa": {
+    "missing_terms": [
+      "GET /api/jobs",
+      "running",
+      "success",
+      "failed",
+      "queued"
+    ],
+    "chars": 1926,
+    "lines": 32,
+    "finish_reason": "stop"
+  }
+}

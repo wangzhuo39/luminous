@@ -1,0 +1,18 @@
+{
+  "model": "gemini-3.1-pro-preview",
+  "endpoint_base": "https://maoapi.org",
+  "created_at": "2026-07-23T22:07:13",
+  "finish_reason": "stop",
+  "response_chars": 4177,
+  "response_lines": 143,
+  "prompt_path": "/home/wz/luminous/docs/front_design/gemini_luminous_frontend_02b1_today_schedule_notifications_20260723_220648.prompt.md",
+  "output_path": "/home/wz/luminous/docs/front_design/gemini_luminous_frontend_02b1_today_schedule_notifications_20260723_220648.md",
+  "qa": {
+    "missing_terms": [
+      "/api/calendar-events"
+    ],
+    "chars": 4177,
+    "lines": 143,
+    "finish_reason": "stop"
+  }
+}

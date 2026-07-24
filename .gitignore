@@ -1,0 +1,19 @@
+# Raw novel text and local samples
+*.txt
+
+# Generated pipeline outputs
+outputs/
+
+# Local environment and caches
+.env
+.env.*
+.venv/
+.codegraph/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# OS/editor noise
+.DS_Store
+*.swp

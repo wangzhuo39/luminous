@@ -1,0 +1,22 @@
+{
+  "model": "gemini-3.1-pro-preview",
+  "endpoint_base": "https://maoapi.org",
+  "created_at": "2026-07-23T21:52:36",
+  "finish_reason": "stop",
+  "response_chars": 6019,
+  "response_lines": 198,
+  "prompt_path": "/home/wz/luminous/docs/front_design/gemini_luminous_frontend_01b_batch1_layout_visual_20260723_215146.prompt.md",
+  "output_path": "/home/wz/luminous/docs/front_design/gemini_luminous_frontend_01b_batch1_layout_visual_20260723_215146.md",
+  "batch1a_path": "/home/wz/luminous/docs/front_design/gemini_luminous_frontend_01a_batch1_concept_ia_20260723_214943.md",
+  "qa": {
+    "missing_terms": [
+      "wireframe"
+    ],
+    "has_css_root": true,
+    "has_desktop_wireframe": true,
+    "has_mobile_wireframe": true,
+    "chars": 6019,
+    "lines": 198,
+    "finish_reason": "stop"
+  }
+}

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>栖光 Luminous</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="state-idle">
+  <!-- 远景层：光窗、天空色温底色 -->
+  <div id="background-layer" class="layer"></div>
+
+  <!-- 环境特效：雾气、流光 -->
+  <div id="environment-fx" class="layer"></div>
+
+  <!-- 主体光晕：伴侣背后的呼吸光影 -->
+  <div id="presence-halo" class="layer"></div>
+
+  <!-- 主体层：伴侣立绘 -->
+  <div id="companion-figure" class="layer">
+    <!-- Using a placeholder representation since the image is not copied over yet, or we'll set background via CSS -->
+    <div class="figure-image"></div>
+  </div>
+
+  <!-- 中景层：AI 回复文本、角色动作描写 -->
+  <div id="subtitle-dialogue" class="layer" aria-live="polite" aria-atomic="true">
+    <div id="dialogue-container">
+      <div class="msg-group system-msg">
+        <div class="msg-content">在这里，时间是静止的...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 前景层：水面输入区 -->
+  <div id="air-input" class="layer">
+    <div class="input-wrapper">
+      <input type="text" id="chat-input" role="textbox" aria-label="与栖光对话" tabindex="0" placeholder="触碰水面..." autocomplete="off">
+      <button id="send-button" aria-label="发送" disabled>
+        <svg viewBox="0 0 24 24" width="24" height="24"><path d="M4 12l1.41 1.41L11 7.83V20h2V7.83l5.58 5.59L20 12l-8-8-8 8z" fill="currentColor"/></svg>
+      </button>
+    </div>
+    <div id="input-feedback" class="feedback-text"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
