@@ -1,0 +1,103 @@
+:root {
+  --color-feedback-error-text: rgba(224, 186, 186, 0.85);
+  --color-feedback-error-border: rgba(224, 186, 186, 0.3);
+  --color-feedback-waiting-border: rgba(165, 196, 212, 0.4);
+  --duration-presence-pulse: 5s;
+}
+
+@keyframes presence-border-pulse {
+  0%, 100% { border-color: var(--color-surface-border); }
+  50% { border-color: var(--color-feedback-waiting-border); }
+}
+
+body[data-app-status="loading"] #send-button,
+body[data-app-status="offline"] #send-button,
+body[data-app-status="error"] #send-button {
+  cursor: not-allowed;
+  opacity: 0.36;
+  pointer-events: none;
+}
+
+.input-wrapper {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+#chat-feedback {
+  display: none;
+  min-height: 1.4em;
+  padding: 4px var(--space-md) calc(8px + env(safe-area-inset-bottom, 0px));
+  color: var(--color-feedback-error-text);
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+}
+
+#send-button .icon-container {
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+#input-surface[data-chat-status="idle"] #send-button .icon-send,
+#input-surface[data-chat-status="submitting"] #send-button .icon-wait,
+#input-surface[data-chat-status="error"] #send-button .icon-retry {
+  display: flex;
+}
+
+#input-surface[data-chat-status="submitting"] #chat-input {
+  border-color: var(--color-feedback-waiting-border);
+  caret-color: transparent;
+  animation: presence-border-pulse var(--duration-presence-pulse) var(--ease-standard) infinite;
+}
+
+#input-surface[data-chat-status="submitting"] #send-button {
+  cursor: wait;
+}
+
+#input-surface[data-chat-status="error"] #chat-input {
+  border-color: var(--color-feedback-error-border);
+}
+
+#input-surface[data-chat-status="error"] #chat-feedback {
+  display: block;
+}
+
+#input-surface[data-chat-status="error"] #chat-input:focus-visible {
+  outline-color: var(--color-feedback-error-text);
+}
+
+body[data-app-status="offline"] #chat-input {
+  border-color: rgba(255, 255, 255, 0.1);
+  background-color: rgba(10, 12, 16, 0.4);
+}
+
+body[data-app-status="offline"] #chat-input:focus-visible {
+  outline-color: rgba(255, 255, 255, 0.3);
+}
+
+#input-surface[data-chat-status="error"][data-error-kind="validation"] #send-button .icon-retry {
+  display: none;
+}
+
+#input-surface[data-chat-status="error"][data-error-kind="validation"] #send-button .icon-send {
+  display: flex;
+}
+
+@media (max-width: 768px) {
+  #chat-feedback {
+    padding-inline: var(--space-sm);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #input-surface[data-chat-status="submitting"] #chat-input {
+    animation: none;
+  }
+}
+
+body[data-reduced-motion="true"] #input-surface[data-chat-status="submitting"] #chat-input {
+  animation: none;
+}

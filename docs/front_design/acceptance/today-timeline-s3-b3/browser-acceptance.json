@@ -1,0 +1,41 @@
+{
+  "passed": true,
+  "results": [
+    {
+      "name": "desktop-1440x1000",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "reducedMotion": "no-preference",
+      "apiRequests": 0,
+      "consoleErrors": 0,
+      "timelineItems": 2,
+      "focusRestored": true
+    },
+    {
+      "name": "mobile-390x844",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "reducedMotion": "reduce",
+      "apiRequests": 0,
+      "consoleErrors": 0,
+      "timelineItems": 2,
+      "focusRestored": true
+    },
+    {
+      "name": "desktop-empty",
+      "expectedStatus": "ready",
+      "expectedConsoleErrors": 0,
+      "unexpectedConsoleErrors": 0
+    },
+    {
+      "name": "desktop-error",
+      "expectedStatus": "error",
+      "expectedConsoleErrors": 1,
+      "unexpectedConsoleErrors": 0
+    }
+  ]
+}

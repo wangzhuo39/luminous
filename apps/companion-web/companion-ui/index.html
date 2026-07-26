@@ -3,45 +3,595 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0b1520">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>栖光 Luminous</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="assets/luminous-icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/luminous-icon-192.png">
+  <link rel="stylesheet" href="styles/tokens.css">
+  <link rel="stylesheet" href="styles/base.css">
+  <link rel="stylesheet" href="styles/scene.css">
+  <link rel="stylesheet" href="styles/overlays.css">
+  <link rel="stylesheet" href="styles/responsive.css">
+  <link rel="stylesheet" href="styles/motion.css">
+  <link rel="stylesheet" href="styles/network-states.css">
+  <link rel="stylesheet" href="styles/life-flow.css">
+  <link rel="stylesheet" href="styles/crystal-solarium.css">
+  <link rel="stylesheet" href="styles/silent-spaces.css">
+  <link rel="stylesheet" href="styles/productization.css">
 </head>
-<body class="state-idle">
-  <!-- 远景层：光窗、天空色温底色 -->
-  <div id="background-layer" class="layer"></div>
+<body data-js-loading="true">
+  <main id="luminous-scene" class="scene-container">
+    <div class="scene-background" aria-hidden="true"></div>
 
-  <!-- 环境特效：雾气、流光 -->
-  <div id="environment-fx" class="layer"></div>
-
-  <!-- 主体光晕：伴侣背后的呼吸光影 -->
-  <div id="presence-halo" class="layer"></div>
-
-  <!-- 主体层：伴侣立绘 -->
-  <div id="companion-figure" class="layer">
-    <!-- Using a placeholder representation since the image is not copied over yet, or we'll set background via CSS -->
-    <div class="figure-image"></div>
-  </div>
-
-  <!-- 中景层：AI 回复文本、角色动作描写 -->
-  <div id="subtitle-dialogue" class="layer" aria-live="polite" aria-atomic="true">
-    <div id="dialogue-container">
-      <div class="msg-group system-msg">
-        <div class="msg-content">在这里，时间是静止的...</div>
+    <div class="solarium-environment" aria-hidden="true">
+      <div class="solarium-depth-haze"></div>
+      <div class="solarium-architecture">
+        <svg class="solarium-vault" viewBox="0 0 1440 1000" preserveAspectRatio="xMidYMid slice" focusable="false">
+          <defs>
+            <linearGradient id="vault-edge-light" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#dff7fb" stop-opacity="0.08"></stop>
+              <stop offset="0.48" stop-color="#e9fbfd" stop-opacity="0.34"></stop>
+              <stop offset="1" stop-color="#9ac8d7" stop-opacity="0.08"></stop>
+            </linearGradient>
+            <radialGradient id="vault-window-bloom" cx="50%" cy="30%" r="58%">
+              <stop offset="0" stop-color="#e8f8f9" stop-opacity="0.3"></stop>
+              <stop offset="0.42" stop-color="#a9d6e1" stop-opacity="0.1"></stop>
+              <stop offset="1" stop-color="#6ca0b4" stop-opacity="0"></stop>
+            </radialGradient>
+          </defs>
+          <ellipse class="vault-window-bloom" cx="720" cy="320" rx="410" ry="285"></ellipse>
+          <g class="vault-frame vault-frame-major">
+            <path d="M145 1000V350C145 92 1288 92 1295 350V1000"></path>
+            <path d="M272 1000V390C272 184 1160 184 1168 390V1000"></path>
+            <path d="M402 1000V438C402 280 1032 280 1038 438V1000"></path>
+          </g>
+          <g class="vault-frame vault-frame-ribs">
+            <path d="M-30 1000L424 284"></path>
+            <path d="M158 1000L500 218"></path>
+            <path d="M348 1000L574 174"></path>
+            <path d="M532 1000L648 148"></path>
+            <path d="M908 1000L792 148"></path>
+            <path d="M1092 1000L866 174"></path>
+            <path d="M1282 1000L940 218"></path>
+            <path d="M1470 1000L1016 284"></path>
+          </g>
+          <g class="vault-frame vault-frame-transoms">
+            <path d="M162 594C328 420 1112 420 1278 594"></path>
+            <path d="M148 760C354 602 1086 602 1292 760"></path>
+          </g>
+          <g class="vault-time-etchings">
+            <path d="M178 714h52M178 742h34M178 770h44"></path>
+            <path d="M1210 664h52M1228 692h34M1218 720h44"></path>
+          </g>
+        </svg>
       </div>
+      <div class="volumetric-rays"></div>
+      <div class="ambient-mist"></div>
+      <div class="crystal-prisms">
+        <div class="prism prism-left"></div>
+        <div class="prism prism-right"></div>
+        <div class="prism prism-float"></div>
+        <div class="memory-crystal-field" data-hook="memory-crystal-field"></div>
+      </div>
+      <div class="solarium-floor"></div>
+      <div class="water-caustics"></div>
     </div>
-  </div>
 
-  <!-- 前景层：水面输入区 -->
-  <div id="air-input" class="layer">
-    <div class="input-wrapper">
-      <input type="text" id="chat-input" role="textbox" aria-label="与栖光对话" tabindex="0" placeholder="触碰水面..." autocomplete="off">
-      <button id="send-button" aria-label="发送" disabled>
-        <svg viewBox="0 0 24 24" width="24" height="24"><path d="M4 12l1.41 1.41L11 7.83V20h2V7.83l5.58 5.59L20 12l-8-8-8 8z" fill="currentColor"/></svg>
+    <div id="companion-figure" class="companion-container" role="img" data-hook="companion-figure" aria-label="陪伴者静静地在场"></div>
+    <div class="foreground-condensation" aria-hidden="true"></div>
+
+    <button type="button" class="update-prism" data-hook="update-trigger" data-state="hidden" hidden>
+      <span data-hook="update-text">窗外有新的晨光</span>
+    </button>
+
+    <section id="dialogue-stream" aria-label="最近的对话" data-hook="dialogue-stream">
+      <div class="message user-message">
+        <p>昨天的雨下得很大...</p>
+      </div>
+      <div class="message assistant-message">
+        <p>但今天阳光很好，不是吗？</p>
+      </div>
+    </section>
+
+    <section class="action-preview-card" data-hook="action-card" aria-labelledby="action-card-title" aria-live="polite" tabindex="-1" hidden>
+      <div class="action-card-refraction" aria-hidden="true"></div>
+      <p class="action-card-eyebrow" data-hook="action-eyebrow">ACTION REFRACTION</p>
+      <h2 id="action-card-title" class="action-card-title" data-hook="action-title">一项需要你确认的行动</h2>
+      <ul class="action-summary" data-hook="action-summary"></ul>
+      <p class="action-card-status" data-hook="action-status"></p>
+      <div class="action-card-actions" data-hook="action-actions"></div>
+    </section>
+
+    <form id="input-surface" class="input-surface-container" data-hook="input-form" data-chat-status="idle">
+      <div class="input-wrapper">
+        <p id="draft-notice" class="draft-whisper" data-hook="draft-notice" aria-live="polite" hidden>昨夜的落笔还在。</p>
+        <textarea id="chat-input" rows="1" maxlength="8000" placeholder="触碰水面..." aria-label="与栖光对话" aria-describedby="draft-notice chat-feedback" data-hook="chat-input"></textarea>
+        <div id="chat-feedback" class="chat-feedback" data-hook="chat-feedback"></div>
+      </div>
+      <button type="submit" id="send-button" aria-label="发送" data-hook="send-button" disabled>
+        <span class="icon-container icon-send" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="24" height="24">
+            <path d="M4 12l1.41 1.41L11 7.83V20h2V7.83l5.58 5.59L20 12l-8-8-8 8z" fill="currentColor"/>
+          </svg>
+        </span>
+        <span class="icon-container icon-wait" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="24" height="24">
+            <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.68"/>
+          </svg>
+        </span>
+        <span class="icon-container icon-retry" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="24" height="24">
+            <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" fill="currentColor"/>
+          </svg>
+        </span>
       </button>
-    </div>
-    <div id="input-feedback" class="feedback-text"></div>
-  </div>
+      <div class="sr-only" aria-live="polite" data-hook="a11y-status"></div>
+    </form>
+  </main>
 
-  <script src="app.js"></script>
+  <nav id="portals-layer" class="portals-container" aria-label="空间功能入口">
+    <button id="today-portal" class="portal-btn portal-object portal-top-left" aria-label="打开今日摘要" aria-expanded="false" data-space="today">
+      <span class="portal-object__shape portal-time-shard" aria-hidden="true">
+        <span class="portal-time-shard__ticks"></span>
+      </span>
+      <span class="portal-object__label">今日</span>
+    </button>
+    <button id="memory-portal" class="portal-btn portal-object portal-mid-left" aria-label="探索记忆" aria-expanded="false" data-space="memory">
+      <span class="portal-object__shape portal-memory-crystal" aria-hidden="true">
+        <svg viewBox="0 0 80 96" focusable="false">
+          <path d="M39 3 74 28 66 74 41 93 8 70 4 25Z"></path>
+          <path d="m39 3 2 90M4 25l37 19 33-16M8 70l33-26 25 30"></path>
+        </svg>
+      </span>
+      <span class="portal-object__label">记忆</span>
+    </button>
+    <button id="privacy-portal" class="portal-btn portal-object portal-top-right" aria-label="打开隐私与设置" aria-expanded="false" data-space="privacy">
+      <span class="portal-object__shape portal-frost-pull" aria-hidden="true"></span>
+      <span class="portal-object__label">隐私</span>
+    </button>
+    <button id="outbox-portal" class="portal-btn portal-object portal-bottom-right" aria-label="查看来信" aria-expanded="false" data-hook="outbox-portal" data-space="outbox">
+      <span class="portal-object__shape portal-letter" aria-hidden="true">
+        <span class="portal-letter__fold"></span>
+        <span class="portal-object__core"></span>
+      </span>
+      <span class="portal-object__label">来信</span>
+      <span class="portal-unread-badge sr-only" data-hook="outbox-unread-count"></span>
+    </button>
+  </nav>
+
+  <div id="overlay-manager">
+    <dialog id="today-overlay" class="luminous-dialog" aria-labelledby="today-title" data-space="today">
+      <div class="dialog-content today-layout">
+        <header class="today-header">
+          <div>
+            <h2 id="today-title" class="dialog-title">今日光影</h2>
+            <time class="dialog-subtitle" datetime="2026-07-25" data-hook="today-date">2026年7月25日</time>
+          </div>
+          <div class="today-header-actions">
+            <button type="button" class="today-icon-button" aria-label="刷新今日光影" data-hook="today-refresh">
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                <path fill="currentColor" d="M12 4V1L8 5l4 4V6a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8Z"/>
+              </svg>
+            </button>
+            <button type="button" class="dialog-close-btn today-close-button" aria-label="关闭今日光影">关闭</button>
+          </div>
+        </header>
+
+        <div class="sr-only" aria-live="polite" data-hook="today-status"></div>
+
+        <div class="today-scroll-area">
+          <section class="today-panel" aria-label="今日摘要" data-hook="today-panel">
+            <div class="today-local-state" data-hook="today-local-state" hidden>
+              <p data-hook="today-state-message">今日暂时没有展开。</p>
+              <button type="button" class="today-secondary-button" data-hook="today-retry">重试</button>
+            </div>
+
+            <div class="today-clusters" data-hook="today-clusters">
+              <section class="today-cluster" aria-labelledby="today-fallback-title">
+                <h3 id="today-fallback-title" class="today-cluster-title">想照看的事</h3>
+                <ul class="today-item-list">
+                  <li class="today-item"><span class="today-item-title">上午有一次重要的会议提醒。</span></li>
+                  <li class="today-item"><span class="today-item-title">下午三点，记得留一点时间休息。</span></li>
+                </ul>
+              </section>
+            </div>
+
+            <nav class="resource-nav" aria-label="生活流" data-hook="resource-nav">
+              <button type="button" class="today-secondary-button" data-hook="activities-open">活动</button>
+              <button type="button" class="today-secondary-button" data-hook="diaries-open">日记</button>
+              <button type="button" class="today-secondary-button" data-hook="reminders-open">提醒</button>
+              <button type="button" class="today-secondary-button" data-hook="calendar-open">日历</button>
+              <button type="button" class="today-secondary-button" data-hook="tasks-open">任务</button>
+              <button type="button" class="today-secondary-button" data-hook="routines-open">日常</button>
+            </nav>
+
+            <div class="today-timeline-reveal">
+              <button type="button" class="today-secondary-button" data-hook="timeline-reveal">回顾时间线</button>
+            </div>
+          </section>
+
+          <section class="activity-panel" data-hook="activity-panel" hidden>
+            <header class="today-subview-header activity-subview-header">
+              <button type="button" class="today-secondary-button" data-hook="activity-back">← 返回</button>
+              <div>
+                <p class="activity-eyebrow">TIME CRYSTAL</p>
+                <h3>活动</h3>
+              </div>
+            </header>
+
+            <div class="activity-list-state" data-hook="activity-list-state"></div>
+            <ul class="activity-list" data-hook="activity-list"></ul>
+            <button type="button" class="today-secondary-button activity-create-button" data-hook="activity-create">计划一次活动</button>
+
+            <div class="activity-crystal" data-hook="activity-crystal"></div>
+            <div class="activity-detail" data-hook="activity-detail"></div>
+            <div class="activity-status-actions" data-hook="activity-status-actions"></div>
+
+            <form data-hook="activity-form" class="resource-form activity-form">
+              <div class="activity-form-intro">
+                <p class="activity-eyebrow">CONDENSE A MOMENT</p>
+                <h3>计划一次活动</h3>
+                <p>给接下来的一段共同时间，留一个安静的名字。</p>
+              </div>
+
+              <label for="activity-title-input">活动</label>
+              <input id="activity-title-input" type="text" maxlength="160" data-hook="activity-title" autocomplete="off" required>
+
+              <label for="activity-kind-select">这段时间更像</label>
+              <select id="activity-kind-select" data-hook="activity-kind">
+                <option value="focus" selected>一起专注</option>
+                <option value="checkin">彼此相伴</option>
+                <option value="planning">慢慢梳理</option>
+                <option value="reflection">安静回望</option>
+              </select>
+
+              <div class="resource-form-actions activity-form-actions">
+                <button type="button" class="today-secondary-button" data-hook="activity-cancel-edit">取消</button>
+                <button type="submit" class="life-flow-primary-action" data-hook="activity-submit">计划活动</button>
+              </div>
+            </form>
+            <div data-hook="activity-error" role="status" aria-live="polite" class="resource-inline-error activity-inline-error" hidden></div>
+          </section>
+
+          <section class="diary-panel" data-hook="diary-panel" hidden>
+            <header class="today-subview-header diary-subview-header">
+              <button type="button" class="today-secondary-button" data-hook="diary-back">← 返回</button>
+              <div>
+                <p class="diary-eyebrow">LIGHT ECHOES</p>
+                <h3>日记</h3>
+              </div>
+            </header>
+
+            <div class="diary-list-state" data-hook="diary-list-state"></div>
+            <ul class="diary-list" data-hook="diary-list"></ul>
+            <div class="diary-list-actions">
+              <button type="button" class="today-secondary-button" data-hook="diary-create">写一篇</button>
+              <button type="button" class="life-flow-primary-action" data-hook="diary-generate">生成今日回顾</button>
+            </div>
+
+            <article class="diary-detail" data-hook="diary-detail"></article>
+            <div class="diary-detail-actions">
+              <button type="button" class="life-flow-primary-action" data-hook="diary-edit">编辑</button>
+              <button type="button" class="today-secondary-button" data-hook="diary-remove">移出日记</button>
+            </div>
+
+            <div data-hook="diary-confirmation" class="resource-confirmation diary-confirmation" hidden>
+              <h4>从时间流中移出这篇日记？</h4>
+              <p>移出后，它将不再出现在当前日记列表中。</p>
+              <button type="button" class="today-secondary-button" data-action="remove-cancel">保留</button>
+              <button type="button" class="life-flow-primary-action" data-action="remove-confirm">确认移出</button>
+            </div>
+
+            <form data-hook="diary-form" class="resource-form diary-form">
+              <div class="diary-form-intro">
+                <p class="diary-eyebrow">A QUIET PAGE</p>
+                <h3 data-hook="diary-form-heading">写下一页</h3>
+                <p data-hook="diary-form-caption">让这一页保留你愿意留下的部分。</p>
+              </div>
+              <label for="diary-title-input">标题</label>
+              <input id="diary-title-input" type="text" maxlength="160" data-hook="diary-title" autocomplete="off" required>
+              <label for="diary-body-input">正文</label>
+              <textarea id="diary-body-input" maxlength="20000" rows="10" data-hook="diary-body" required></textarea>
+              <div class="resource-form-actions diary-form-actions">
+                <button type="button" class="today-secondary-button" data-hook="diary-cancel-edit">取消</button>
+                <button type="submit" class="life-flow-primary-action" data-hook="diary-submit">保存到 Luminous</button>
+              </div>
+            </form>
+            <div data-hook="diary-error" role="status" aria-live="polite" class="resource-inline-error diary-inline-error" hidden></div>
+          </section>
+
+          <section class="reminder-panel" data-hook="reminder-panel" hidden>
+            <header class="today-subview-header reminder-subview-header">
+              <button type="button" class="today-secondary-button" data-hook="reminder-back">← 返回</button>
+              <div>
+                <p class="reminder-eyebrow">LIGHT DUST</p>
+                <h3>提醒光尘</h3>
+              </div>
+            </header>
+
+            <div class="reminder-list-state" data-hook="reminder-list-state"></div>
+            <ul class="reminder-active-list" data-hook="reminder-active-list"></ul>
+            <section class="reminder-terminal-region" data-hook="reminder-terminal-region" hidden>
+              <button type="button" class="reminder-terminal-toggle" data-hook="reminder-terminal-toggle" aria-expanded="false">已经落定的光尘</button>
+              <ul class="reminder-terminal-list" data-hook="reminder-terminal-list" hidden></ul>
+            </section>
+            <button type="button" class="today-secondary-button reminder-create-button" data-hook="reminder-create">留下一粒提醒</button>
+
+            <article class="reminder-detail" data-hook="reminder-detail"></article>
+            <div class="reminder-detail-actions" data-hook="reminder-detail-actions"></div>
+
+            <form class="reminder-snooze-form" data-hook="reminder-snooze-form" hidden>
+              <label for="reminder-snooze-at">让它在这个时间再来</label>
+              <input id="reminder-snooze-at" type="datetime-local" data-hook="reminder-snooze-at" required>
+              <div class="resource-form-actions">
+                <button type="button" class="today-secondary-button" data-hook="reminder-snooze-dismiss">暂不调整</button>
+                <button type="submit" class="life-flow-primary-action" data-hook="reminder-snooze-submit">确认时间</button>
+              </div>
+            </form>
+
+            <div class="resource-confirmation reminder-confirmation" data-hook="reminder-confirmation" hidden>
+              <h4>让这粒提醒光尘安静落下？</h4>
+              <p>它会保留在已经落定的光尘中。</p>
+              <button type="button" class="today-secondary-button" data-action="cancel-dismiss">保留提醒</button>
+              <button type="button" class="life-flow-primary-action" data-action="cancel-confirm">确认取消</button>
+            </div>
+
+            <form class="resource-form reminder-form" data-hook="reminder-form">
+              <div class="reminder-form-intro">
+                <p class="reminder-eyebrow">CONDENSE A REMINDER</p>
+                <h3 data-hook="reminder-form-heading">凝结一粒提醒光尘</h3>
+                <p>给未来某个时刻，留一束不催促的微光。</p>
+              </div>
+              <label for="reminder-title-input">提醒</label>
+              <input id="reminder-title-input" type="text" maxlength="160" data-hook="reminder-title" autocomplete="off" required>
+              <label for="reminder-description-input">说明（可选）</label>
+              <textarea id="reminder-description-input" maxlength="2000" rows="4" data-hook="reminder-description"></textarea>
+              <label for="reminder-due-at-input">抵达时间</label>
+              <input id="reminder-due-at-input" type="datetime-local" data-hook="reminder-due-at" required>
+              <label for="reminder-recurrence-select">重复</label>
+              <select id="reminder-recurrence-select" data-hook="reminder-recurrence">
+                <option value="" selected>不重复</option>
+                <option value="daily">每日</option>
+                <option value="weekly">每周</option>
+              </select>
+              <div class="resource-form-actions">
+                <button type="button" class="today-secondary-button" data-hook="reminder-cancel-edit">取消</button>
+                <button type="submit" class="life-flow-primary-action" data-hook="reminder-submit">留下提醒</button>
+              </div>
+            </form>
+            <div class="resource-inline-error reminder-inline-error" data-hook="reminder-error" role="status" aria-live="polite" hidden></div>
+          </section>
+
+          <section class="calendar-panel" data-hook="calendar-panel" hidden>
+            <header class="today-subview-header calendar-subview-header">
+              <button type="button" class="today-secondary-button" data-hook="calendar-back">← 返回</button>
+              <div>
+                <p class="calendar-eyebrow">WINDOW SCALE</p>
+                <h3>日历窗框</h3>
+              </div>
+            </header>
+
+            <div class="calendar-list-state" data-hook="calendar-list-state"></div>
+            <ol class="calendar-scale" data-hook="calendar-scale"></ol>
+            <button type="button" class="today-secondary-button calendar-create-button" data-hook="calendar-create">落下一段时间</button>
+
+            <article class="calendar-detail" data-hook="calendar-detail"></article>
+            <div class="calendar-detail-actions" data-hook="calendar-detail-actions"></div>
+            <div class="resource-confirmation calendar-confirmation" data-hook="calendar-confirmation" hidden>
+              <h4>从日历窗框移出这个刻度？</h4>
+              <p>移出后，它将不再出现在当前日历列表中。</p>
+              <button type="button" class="today-secondary-button" data-action="remove-cancel">保留</button>
+              <button type="button" class="life-flow-primary-action" data-action="remove-confirm">确认移出</button>
+            </div>
+
+            <form class="resource-form calendar-form" data-hook="calendar-form">
+              <div class="calendar-form-intro">
+                <p class="calendar-eyebrow">PLACE A TIME MARK</p>
+                <h3 data-hook="calendar-form-heading">落下一段时间</h3>
+                <p>让一段时间沿着光窗边缘，有一个清楚的位置。</p>
+              </div>
+              <label for="calendar-title-input">标题</label>
+              <input id="calendar-title-input" type="text" maxlength="160" data-hook="calendar-title" autocomplete="off" required>
+              <label class="calendar-all-day-field" for="calendar-all-day-input">
+                <input id="calendar-all-day-input" type="checkbox" data-hook="calendar-all-day">
+                <span>全天光带</span>
+              </label>
+              <div class="calendar-timed-fields" data-hook="calendar-timed-fields">
+                <label for="calendar-starts-at-input">开始</label>
+                <input id="calendar-starts-at-input" type="datetime-local" data-hook="calendar-starts-at" required>
+                <label for="calendar-ends-at-input">结束（可选）</label>
+                <input id="calendar-ends-at-input" type="datetime-local" data-hook="calendar-ends-at">
+              </div>
+              <div class="calendar-date-fields" data-hook="calendar-date-fields" hidden>
+                <label for="calendar-start-date-input">开始日期</label>
+                <input id="calendar-start-date-input" type="date" data-hook="calendar-start-date">
+                <label for="calendar-end-date-input">结束日期（可选）</label>
+                <input id="calendar-end-date-input" type="date" data-hook="calendar-end-date">
+              </div>
+              <div class="resource-form-actions">
+                <button type="button" class="today-secondary-button" data-hook="calendar-cancel-edit">取消</button>
+                <button type="submit" class="life-flow-primary-action" data-hook="calendar-submit">留下刻度</button>
+              </div>
+            </form>
+            <div class="resource-inline-error calendar-inline-error" data-hook="calendar-error" role="status" aria-live="polite" hidden></div>
+          </section>
+
+          <section class="task-panel" data-hook="task-panel" hidden>
+            <header class="today-subview-header">
+              <button type="button" class="today-secondary-button" data-hook="task-back">← 返回</button>
+              <h3>任务</h3>
+            </header>
+
+            <div data-hook="task-list-state"></div>
+            <ul class="today-item-list" data-hook="task-list"></ul>
+            <button type="button" class="today-secondary-button" data-hook="task-create">凝结新任务</button>
+
+            <div data-hook="task-detail"></div>
+            <ul class="task-step-list" data-hook="task-step-list"></ul>
+            <form data-hook="task-step-form" class="resource-inline-form">
+              <label for="task-step-title-input" class="sr-only">添加步骤</label>
+              <input id="task-step-title-input" type="text" data-hook="task-step-title" placeholder="添加步骤..." required>
+              <button type="submit" class="today-secondary-button">添加</button>
+            </form>
+
+            <div class="resource-actions" data-hook="task-status-actions"></div>
+            <button type="button" class="today-secondary-button" data-hook="task-archive">归档任务</button>
+
+            <div data-hook="task-confirmation" class="resource-confirmation" hidden>
+              <p>让这段光影沉入基座？</p>
+              <button type="button" class="today-secondary-button" data-action="archive-cancel">取消</button>
+              <button type="button" class="life-flow-primary-action" data-action="archive-confirm">确认归档</button>
+            </div>
+
+            <form data-hook="task-form" class="resource-form">
+              <label for="task-title-input">任务</label>
+              <input id="task-title-input" type="text" data-hook="task-title" required>
+
+              <label for="task-desc-input">描述</label>
+              <textarea id="task-desc-input" data-hook="task-description"></textarea>
+
+              <label for="task-due-input">时间</label>
+              <input id="task-due-input" type="datetime-local" data-hook="task-due-at">
+
+              <label for="task-priority-select">优先级</label>
+              <select id="task-priority-select" data-hook="task-priority">
+                <option value="low">舒缓</option>
+                <option value="normal" selected>平常</option>
+                <option value="high">优先</option>
+              </select>
+
+              <div class="resource-form-actions">
+                <button type="button" class="today-secondary-button" data-hook="task-cancel-edit">取消</button>
+                <button type="submit" class="life-flow-primary-action" data-hook="task-submit">保存</button>
+              </div>
+            </form>
+            <div data-hook="task-error" role="status" aria-live="polite" class="resource-inline-error" hidden></div>
+          </section>
+
+          <section class="routine-panel" data-hook="routine-panel" hidden>
+            <header class="today-subview-header">
+              <button type="button" class="today-secondary-button" data-hook="routine-back">← 返回</button>
+              <h3>日常</h3>
+            </header>
+
+            <div data-hook="routine-list-state"></div>
+            <ul class="today-item-list" data-hook="routine-list"></ul>
+            <button type="button" class="today-secondary-button" data-hook="routine-create">培养新日常</button>
+
+            <div data-hook="routine-detail"></div>
+            <button type="button" class="life-flow-primary-action" data-hook="routine-checkin">照看今天</button>
+            <button type="button" class="today-secondary-button" data-hook="routine-deactivate">停用习惯</button>
+
+            <div data-hook="routine-confirmation" class="resource-confirmation" hidden>
+              <p>不再让它承接今日晨露？</p>
+              <button type="button" class="today-secondary-button" data-action="deactivate-cancel">取消</button>
+              <button type="button" class="life-flow-primary-action" data-action="deactivate-confirm">确认停用</button>
+            </div>
+
+            <form data-hook="routine-form" class="resource-form">
+              <label for="routine-title-input">日常</label>
+              <input id="routine-title-input" type="text" data-hook="routine-title" required>
+
+              <label for="routine-schedule-select">周期</label>
+              <select id="routine-schedule-select" data-hook="routine-schedule">
+                <option value="daily" selected>每日</option>
+                <option value="weekly">每周</option>
+              </select>
+
+              <label for="routine-reminder-select">提醒</label>
+              <select id="routine-reminder-select" data-hook="routine-reminder-policy">
+                <option value="none" selected>不提醒</option>
+                <option value="remind">轻声提醒</option>
+              </select>
+
+              <div class="resource-form-actions">
+                <button type="button" class="today-secondary-button" data-hook="routine-cancel-edit">取消</button>
+                <button type="submit" class="life-flow-primary-action" data-hook="routine-submit">保存</button>
+              </div>
+            </form>
+            <div data-hook="routine-error" role="status" aria-live="polite" class="resource-inline-error" hidden></div>
+          </section>
+
+          <section class="timeline-panel" aria-label="时间线" data-hook="timeline-panel" hidden>
+            <header class="today-subview-header">
+              <button type="button" class="today-secondary-button" data-hook="timeline-back" aria-label="返回今日摘要">← 返回</button>
+              <h3>时间线</h3>
+            </header>
+            <div class="today-local-state" data-hook="timeline-local-state" hidden>
+              <p data-hook="timeline-state-message">时间线暂时没有展开。</p>
+              <button type="button" class="today-secondary-button" data-hook="timeline-retry">重试</button>
+            </div>
+            <ul class="today-timeline-list" data-hook="timeline-list"></ul>
+          </section>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="outbox-overlay" class="luminous-dialog" aria-labelledby="outbox-title" data-space="outbox">
+      <div class="dialog-content">
+        <header class="silent-space-header">
+          <div><p class="silent-space-eyebrow">折进窗边的信笺</p><h2 id="outbox-title" class="dialog-title">来信</h2></div>
+          <button class="dialog-close-btn silent-close-button" aria-label="关闭来信">关闭</button>
+        </header>
+        <div class="silent-space-scroll" aria-live="polite">
+          <p class="silent-state" data-hook="outbox-status">信笺仍安静地合着。</p>
+          <button type="button" class="silent-button silent-button--ghost" data-hook="outbox-retry" hidden>重新展开</button>
+          <ul class="dialog-list outbox-list" data-hook="outbox-arrivals"></ul>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="memory-overlay" class="luminous-dialog" aria-labelledby="memory-title" data-space="memory">
+      <div class="dialog-content">
+        <header class="silent-space-header">
+          <div><p class="silent-space-eyebrow">只在你凝视时显现</p><h2 id="memory-title" class="dialog-title">记忆晶体</h2></div>
+          <button class="dialog-close-btn silent-close-button" aria-label="关闭记忆晶体">关闭</button>
+        </header>
+        <form class="memory-search-form" data-hook="memory-search-form" role="search">
+          <label class="silent-label" for="memory-search">想起哪一段</label>
+          <div class="memory-search-row">
+            <input id="memory-search" class="crystal-input" data-hook="memory-search-input" maxlength="120" autocomplete="off" placeholder="输入一个片段，例如“雨后的光”">
+            <button class="silent-button silent-button--quiet" type="submit">凝视</button>
+          </div>
+        </form>
+        <div class="silent-space-scroll memory-results" aria-live="polite">
+          <p class="silent-state" data-hook="memory-status">记忆悬浮于深处，等待你用一个片段唤醒。</p>
+          <button type="button" class="silent-button silent-button--ghost" data-hook="memory-retry" hidden>再次凝视</button>
+          <ul class="dialog-list memory-list" data-hook="memory-hits"></ul>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="privacy-overlay" class="luminous-dialog" aria-labelledby="privacy-title" data-space="privacy">
+      <div class="dialog-content">
+        <header class="silent-space-header">
+          <div><p class="silent-space-eyebrow">你决定光能抵达哪里</p><h2 id="privacy-title" class="dialog-title">隐私与边界</h2></div>
+          <button class="dialog-close-btn silent-close-button" aria-label="关闭隐私与边界">关闭</button>
+        </header>
+        <p class="dialog-caption">这些选择只改变联系的节奏，不改变你随时可以离开的权利。</p>
+        <p class="silent-state" data-hook="privacy-status" aria-live="polite"></p>
+        <button type="button" class="silent-button silent-button--ghost" data-hook="privacy-retry" hidden>重新展开</button>
+        <form class="privacy-form" data-hook="privacy-form" hidden>
+          <p class="privacy-readonly" data-hook="privacy-dnd-status"></p>
+          <label class="privacy-row privacy-row--toggle"><span><strong>允许轻轻问候</strong><small>关闭后，仍会保留你主动打开的提醒。</small></span><input type="checkbox" data-hook="privacy-enabled"></label>
+          <label class="privacy-row"><span><strong>每天最多抵达</strong><small>把主动联系留在可承受的范围里。</small></span><select data-hook="privacy-limit"><option value="0">不主动抵达</option><option value="1">1 次</option><option value="2">2 次</option><option value="3">3 次</option><option value="4">4 次</option><option value="5">5 次</option><option value="6">6 次</option></select></label>
+          <fieldset class="privacy-quiet-fieldset"><legend>安静时段</legend><label>从<input type="time" data-hook="privacy-quiet-start"></label><span aria-hidden="true">到</span><label>至<input type="time" data-hook="privacy-quiet-end"></label></fieldset>
+          <button class="silent-button silent-button--quiet privacy-save" type="submit" data-hook="privacy-save">维持现状</button>
+        </form>
+        <section class="privacy-install-section" data-hook="install-section" aria-labelledby="install-title" hidden>
+          <div>
+            <h3 id="install-title">安置温室</h3>
+            <p>让这束光静止在你的设备里。离线时可看见温室的轮廓，回信仍需等待网络恢复。</p>
+          </div>
+          <button type="button" class="silent-button silent-button--quiet install-button" data-hook="install-button">留下光印</button>
+        </section>
+      </div>
+    </dialog>
+  </div>
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>

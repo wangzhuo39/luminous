@@ -16,12 +16,13 @@
 - PromptBuilder：记忆目录、必要证据展开、状态摘要、关系摘要、输出协议和预算信息。
 - Worker / Trace：后台 tick、记忆整理、状态衰减、主动联系、outbox 投递、ledger / trace。
 
-当前网页端只是测试入口；后续可以演进为 app、Live2D/VRM、语音和更完整的伴侣空间。
+当前网页端已完成 S1–S5：核心陪伴、生活流、静默空间与 PWA 产品化能力均已落地，并以“晶格温室”作为统一视觉基线。后续仍可演进为 app、Live2D/VRM、语音和更完整的伴侣空间，但新能力必须先建立用户安全接口与隐私边界。
 
 ## 项目边界
 
 - `luminous/runtime/`：栖光情感陪伴运行时。
-- `apps/companion-web/`：当前网页端 demo / 测试入口。
+- `apps/companion-web/`：当前可运行网页端，包含晶格温室主场景、生活流、静默空间与 PWA 壳层。
+- `docs/front_design/`：前端设计理念、living architecture、S1–S5 实施记录和截图验收证据。
 - `docs/product/`：产品身份、命名和产品阶段文档。
 - `docs/research/`：AI 伴侣调研、进度审计、评测数据来源。
 - `docs/architecture/`：伴侣底座架构和阶段路线图。
@@ -51,6 +52,14 @@ luminous-api --host 127.0.0.1 --port 8000
 http://127.0.0.1:8000
 ```
 
+只查看确定性 fixture、避免调用后端接口：
+
+```text
+http://127.0.0.1:8000/?mode=fixture
+```
+
+网页端提供 Manifest、可安装 PWA、静态离线壳和空间级深链。离线只保证温室轮廓与未发送 session draft；业务 API、聊天、写操作和历史不会缓存，也不会排队伪发送。
+
 本地不调用 LLM 的 smoke test：
 
 ```bash
@@ -75,7 +84,7 @@ luminous-api --host 127.0.0.1 --port 8000 --mock
 - `POST /api/outbox/receipt`
 - `GET /api/export`
 
-`POST /api/chat` 只返回安全前端字段，如 `role_thinking`、`role_action`、`reply`、`presence`、`memory`、`state`、`prompt`、`proactive`。后端会解析并剥离 `system_thinking`，原始模型输出不会直接发送到浏览器。
+`POST /api/chat` 当前仍可能返回 `role_thinking`、`role_action`、memory、prompt、ledger/meta 等普通产品界面不应消费的内部字段。网页端通过严格 adapter 白名单只保留最终回复与有限 scene presentation；raw response 不进入 AppState、DOM、storage 或日志。公开部署前仍建议由后端提供真正的 user-safe DTO，并补齐身份认证与多用户隔离。
 
 ## 后台 worker
 
@@ -109,6 +118,9 @@ luminous-worker --job memory_consolidation
 4. [docs/research/ai_companion_landscape.md](docs/research/ai_companion_landscape.md)：查看开源 AI 伴侣功能调研。
 5. [docs/architecture/roleplay_companion_architecture.md](docs/architecture/roleplay_companion_architecture.md)：理解伴侣底座架构。
 6. [docs/architecture/companion_foundation_implementation_roadmap.md](docs/architecture/companion_foundation_implementation_roadmap.md)：查看五阶段实现路线。
+7. [docs/front_design/README.md](docs/front_design/README.md)：查看前端设计与 S1–S5 文档索引。
+8. [docs/front_design/FRONTEND_AGENT_HANDOFF.md](docs/front_design/FRONTEND_AGENT_HANDOFF.md)：查看当前前端完成状态、边界与后续接手规则。
+9. [docs/front_design/frontend_architecture_v1.md](docs/front_design/frontend_architecture_v1.md)：查看持续维护的前端架构决策。
 
 训练和数据准备文档仍然保留，但它们现在是“人格/模型底座”的资料，不再是产品主线入口：
 
@@ -147,16 +159,30 @@ python luminous/training/pipeline/cli.py run \
 
 ## 验证
 
-当前完整回归：
+安装前端测试依赖：
 
 ```bash
-python -m pytest -q
+npm ci
 ```
 
-最近一次验证结果：
+运行前端纯逻辑、契约和静态服务器测试：
+
+```bash
+npm run test:frontend
+```
+
+在 `http://127.0.0.1:4173` 已启动当前网页后，运行九套跨阶段 Chromium 验收：
+
+```bash
+npm run test:browser
+```
+
+最近一次验证结果（2026-07-26）：
 
 ```text
-145 passed
+Node tests: 175 passed, 0 failed
+Chromium acceptance: 9/9 scripts passed
+Gemini S5 multimodal re-audit: 98/100, no P0/P1/P2
 ```
 
 生成的 `outputs/` 目录默认被 git 忽略。

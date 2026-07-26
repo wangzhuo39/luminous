@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#070d14" />
+      <stop offset="100%" stop-color="#0f1926" />
+    </linearGradient>
+    <linearGradient id="light-beam" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0" />
+      <stop offset="40%" stop-color="#eaf3ff" stop-opacity="0.85" />
+      <stop offset="60%" stop-color="#eaf3ff" stop-opacity="0.85" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+    </linearGradient>
+    <linearGradient id="facet-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.3" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+    </linearGradient>
+    <filter id="beam-blur" x="-50%" y="-10%" width="200%" height="120%">
+      <feGaussianBlur stdDeviation="2" />
+    </filter>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg-grad)" />
+  <rect x="254" y="100" width="4" height="312" fill="url(#light-beam)" />
+  <rect x="252" y="140" width="8" height="232" fill="url(#light-beam)" opacity="0.6" filter="url(#beam-blur)" />
+  <path d="M 256 120 L 320 220 L 256 340 Z" fill="url(#facet-grad)" style="mix-blend-mode: screen;" />
+  <path d="M 256 180 L 180 256 L 256 392 L 280 280 Z" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" />
+  <circle cx="256" cy="256" r="1.5" fill="#ffffff" />
+  <path d="M 190 246 Q 256 200 300 300" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+</svg>

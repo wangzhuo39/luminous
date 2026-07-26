@@ -1,0 +1,27 @@
+{
+  "name": "栖光 Luminous",
+  "short_name": "栖光",
+  "description": "一束安静在场的光。",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#070d14",
+  "theme_color": "#0b1520",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "assets/luminous-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "assets/luminous-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

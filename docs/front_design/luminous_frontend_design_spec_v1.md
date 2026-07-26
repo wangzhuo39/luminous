@@ -8,18 +8,18 @@
 
 ## 原始 Gemini 产物索引
 
-- 00 设计大纲: `gemini_luminous_frontend_00_outline_20260723_214053.md`
-- 01A 体验概念与信息架构: `gemini_luminous_frontend_01a_batch1_concept_ia_20260723_214943.md`
-- 01B 主界面布局与视觉系统: `gemini_luminous_frontend_01b_batch1_layout_visual_20260723_215146.md`
-- 02A-1 对话、凝露输入与 Presence: `gemini_luminous_frontend_02a1_chat_input_presence_20260723_220004.md`
-- 02A-2 主动联系与记忆星图: `gemini_luminous_frontend_02a2_outbox_memory_20260723_220133.md`
-- 02B-1 TodaySheet、提醒日程与通知边界: `gemini_luminous_frontend_02b1_today_schedule_notifications_20260723_220648.md`
-- 02B-1 Supplement Calendar Events: `gemini_luminous_frontend_02b1s_calendar_events_supplement_20260723_220941.md`
-- 02B-2 任务、习惯、活动与日记: `gemini_luminous_frontend_02b2_tasks_routines_activities_diary_20260723_220811.md`
-- 03A 响应式、动效、可访问性与安全: `gemini_luminous_frontend_03a_responsive_motion_a11y_safety_20260723_221116.md`
-- 03A Supplement 390x844 与 DND: `gemini_luminous_frontend_03a_supplement_mobile_dnd_20260723_221250.md`
-- 03B 审计调试、重构路线与验收: `gemini_luminous_frontend_03b_audit_refactor_acceptance_20260723_221416.md`
-- 03B Supplement /api/jobs: `gemini_luminous_frontend_03b_supplement_jobs_api_20260723_221735.md`
+- 00 设计大纲: `archive/gemini_design_round_20260723/gemini_luminous_frontend_00_outline_20260723_214053.md`
+- 01A 体验概念与信息架构: `archive/gemini_design_round_20260723/gemini_luminous_frontend_01a_batch1_concept_ia_20260723_214943.md`
+- 01B 主界面布局与视觉系统: `archive/gemini_design_round_20260723/gemini_luminous_frontend_01b_batch1_layout_visual_20260723_215146.md`
+- 02A-1 对话、凝露输入与 Presence: `archive/gemini_design_round_20260723/gemini_luminous_frontend_02a1_chat_input_presence_20260723_220004.md`
+- 02A-2 主动联系与记忆星图: `archive/gemini_design_round_20260723/gemini_luminous_frontend_02a2_outbox_memory_20260723_220133.md`
+- 02B-1 TodaySheet、提醒日程与通知边界: `archive/gemini_design_round_20260723/gemini_luminous_frontend_02b1_today_schedule_notifications_20260723_220648.md`
+- 02B-1 Supplement Calendar Events: `archive/gemini_design_round_20260723/gemini_luminous_frontend_02b1s_calendar_events_supplement_20260723_220941.md`
+- 02B-2 任务、习惯、活动与日记: `archive/gemini_design_round_20260723/gemini_luminous_frontend_02b2_tasks_routines_activities_diary_20260723_220811.md`
+- 03A 响应式、动效、可访问性与安全: `archive/gemini_design_round_20260723/gemini_luminous_frontend_03a_responsive_motion_a11y_safety_20260723_221116.md`
+- 03A Supplement 390x844 与 DND: `archive/gemini_design_round_20260723/gemini_luminous_frontend_03a_supplement_mobile_dnd_20260723_221250.md`
+- 03B 审计调试、重构路线与验收: `archive/gemini_design_round_20260723/gemini_luminous_frontend_03b_audit_refactor_acceptance_20260723_221416.md`
+- 03B Supplement /api/jobs: `archive/gemini_design_round_20260723/gemini_luminous_frontend_03b_supplement_jobs_api_20260723_221735.md`
 
 ## 使用方式
 
@@ -32,7 +32,7 @@
 
 # Source Section：00 设计大纲
 
-> 原稿文件：`gemini_luminous_frontend_00_outline_20260723_214053.md`
+> 原稿文件：`archive/gemini_design_round_20260723/gemini_luminous_frontend_00_outline_20260723_214053.md`
 
 作为「栖光 luminous」的前端体验与视觉重构主设计师，我已充分理解项目的核心诉求：我们需要将一个基于 Vanilla JS + Python 静态托管的“三栏工具台”原型，重构为一个具备**“安静在场、长期记得、主动但克制”**气质的情感伴侣空间。
 
@@ -202,7 +202,7 @@ Codex 在调度我进行后续批次扩写时，请使用以下标准验收我�
 
 # Source Section：01A 体验概念与信息架构
 
-> 原稿文件：`gemini_luminous_frontend_01a_batch1_concept_ia_20260723_214943.md`
+> 原稿文件：`archive/gemini_design_round_20260723/gemini_luminous_frontend_01a_batch1_concept_ia_20260723_214943.md`
 
 # Batch 1A：晶格温室的体验概念与信息架构
 
@@ -347,7 +347,7 @@ Codex 在调度我进行后续批次扩写时，请使用以下标准验收我�
 
 # Source Section：01B 主界面布局与视觉系统
 
-> 原稿文件：`gemini_luminous_frontend_01b_batch1_layout_visual_20260723_215146.md`
+> 原稿文件：`archive/gemini_design_round_20260723/gemini_luminous_frontend_01b_batch1_layout_visual_20260723_215146.md`
 
 # Batch 1B：晶格温室的主界面布局、镜头语言与视觉系统
 
@@ -552,7 +552,7 @@ __________________
 
 # Source Section：02A-1 对话、凝露输入与 Presence
 
-> 原稿文件：`gemini_luminous_frontend_02a1_chat_input_presence_20260723_220004.md`
+> 原稿文件：`archive/gemini_design_round_20260723/gemini_luminous_frontend_02a1_chat_input_presence_20260723_220004.md`
 
 # Batch 2A-1：对话、凝露输入与 Presence 规格
 
@@ -614,7 +614,7 @@ __________________
 2.  **乐观显示：** 用户发送后，文字立即以 40% 透明度出现在对话区右侧，不等待 API 返回。
 3.  **发送请求：** 调用 `POST /api/chat`。
 4.  **状态切换：** PresenceHalo 切换至 `thinking` 模式；AirInput 进入 `disabled` 状态，发送图标变为微弱旋转的晶体。
-5.  **返回处理：** 
+5.  **返回处理：**
     - 接收到 `reply`：用户消息变为 100% 不透明，角色消息从左侧流式析出。
     - 接收到 `presence`：PresenceHalo 立即平滑过渡到新状态。
     - 接收到 `memory`：在对话流侧边短暂闪烁一个“记忆晶片”图标。
@@ -661,7 +661,7 @@ __________________
 
 # Source Section：02A-2 主动联系与记忆星图
 
-> 原稿文件：`gemini_luminous_frontend_02a2_outbox_memory_20260723_220133.md`
+> 原稿文件：`archive/gemini_design_round_20260723/gemini_luminous_frontend_02a2_outbox_memory_20260723_220133.md`
 
 # Batch 2A-2：主动联系与记忆星图规格
 
@@ -835,7 +835,7 @@ __________________
 
 # Source Section：02B-1 TodaySheet、提醒日程与通知边界
 
-> 原稿文件：`gemini_luminous_frontend_02b1_today_schedule_notifications_20260723_220648.md`
+> 原稿文件：`archive/gemini_design_round_20260723/gemini_luminous_frontend_02b1_today_schedule_notifications_20260723_220648.md`
 
 # Batch 2B-1：TodaySheet、提醒日程与通知边界规格
 
@@ -985,7 +985,7 @@ __________________
 
 # Source Section：02B-1 Supplement Calendar Events
 
-> 原稿文件：`gemini_luminous_frontend_02b1s_calendar_events_supplement_20260723_220941.md`
+> 原稿文件：`archive/gemini_design_round_20260723/gemini_luminous_frontend_02b1s_calendar_events_supplement_20260723_220941.md`
 
 # Batch 2B-1 Supplement：Calendar Events 精确映射
 
@@ -1045,7 +1045,7 @@ __________________
 
 # Source Section：02B-2 任务、习惯、活动与日记
 
-> 原稿文件：`gemini_luminous_frontend_02b2_tasks_routines_activities_diary_20260723_220811.md`
+> 原稿文件：`archive/gemini_design_round_20260723/gemini_luminous_frontend_02b2_tasks_routines_activities_diary_20260723_220811.md`
 
 # Batch 2B-2：共同任务、例行习惯、活动会话与日记回顾规格
 
@@ -1235,7 +1235,7 @@ __________________
 
 # Source Section：03A 响应式、动效、可访问性与安全
 
-> 原稿文件：`gemini_luminous_frontend_03a_responsive_motion_a11y_safety_20260723_221116.md`
+> 原稿文件：`archive/gemini_design_round_20260723/gemini_luminous_frontend_03a_responsive_motion_a11y_safety_20260723_221116.md`
 
 # Batch 3A：响应式、动效、可访问性与安全隐私边界
 
@@ -1258,7 +1258,7 @@ __________________
 ## 2. 移动端交互规范
 
 *   **安全区域 (Safe Area)：** 全面适配 `env(safe-area-inset-*)`。顶部留出刘海/灵动岛空间，底部输入框 `AirInput` 必须在 Home Indicator 之上。
-*   **键盘防遮挡 (Virtual Keyboard)：** 
+*   **键盘防遮挡 (Virtual Keyboard)：**
     *   使用 Visual Viewport API 监听键盘弹出。
     *   **核心规则：** 绝对不允许字幕 (`SubtitleDialogue`) 和输入框 (`AirInput`) 遮挡人物脸部（屏幕上半部分 40% 区域）。
     *   键盘弹出时，`CompanionFigure` 触发 CSS `transform: translateY(-10vh) scale(0.95)` 向上微调，输入框紧贴键盘顶部。
@@ -1330,7 +1330,7 @@ __________________
     *   使用自定义的 `:focus-visible` 样式（如柔和的白色外发光 `box-shadow: 0 0 0 2px rgba(255,255,255,0.6)`），不破坏晶格温室的视觉一致性。
     *   打开 `TodaySheet` 抽屉时，JS 需将焦点 Trap（锁定）在抽屉内部，关闭时将焦点交还给触发按钮。
 *   **字幕可读性：** `SubtitleDialogue` 必须满足 WCAG AA 级对比度。在复杂的背景下，字幕容器需加上底部的文字阴影或极度柔和的暗色渐变遮罩。
-*   **ARIA 实时播报：** 
+*   **ARIA 实时播报：**
     *   字幕区域需设置 `aria-live="polite" aria-atomic="true"`，确保屏幕阅读器能读出 AI 的新回复。
 
 ---
@@ -1361,7 +1361,7 @@ __________________
     *   界面色调自动过渡为冷静的冷白光（Cool White）。
     *   暂停一切主动搭话 (`proactive`)。
     *   在输入框侧边提供一个低调的盾牌 Icon（`NotificationBoundary`），点击展开温和的边界提示与心理干预/审计链接。
-*   **隐私模式 (Privacy Screen)：** 
+*   **隐私模式 (Privacy Screen)：**
     *   当页面通过 Page Visibility API 侦测到 `document.hidden` 或用户长时间无操作（10分钟）时，整个 Stage 加上 `backdrop-filter: blur(10px)`，保护屏幕内容不被旁人窥视。
 
 ---
@@ -1400,7 +1400,7 @@ __________________
 
 # Source Section：03A Supplement 390x844 与 DND
 
-> 原稿文件：`gemini_luminous_frontend_03a_supplement_mobile_dnd_20260723_221250.md`
+> 原稿文件：`archive/gemini_design_round_20260723/gemini_luminous_frontend_03a_supplement_mobile_dnd_20260723_221250.md`
 
 # Batch 3A Supplement：390x844 移动端与 DND 勿扰状态
 
@@ -1469,7 +1469,7 @@ __________________
 
 # Source Section：03B 审计调试、重构路线与验收
 
-> 原稿文件：`gemini_luminous_frontend_03b_audit_refactor_acceptance_20260723_221416.md`
+> 原稿文件：`archive/gemini_design_round_20260723/gemini_luminous_frontend_03b_audit_refactor_acceptance_20260723_221416.md`
 
 # Batch 3B：审计调试、渐进式重构路线与验收清单
 
@@ -1519,14 +1519,14 @@ __________________
     *   **Trace 流：** 实时滚动显示 `/api/trace`。
     *   **Ledger 视图：** 展示 `/api/ledger` 中的推理步长、Token 消耗、决策权重。
     *   **Jobs 状态：** 监控后台异步任务（如：向量数据库索引更新）。
-*   **权限/显隐策略：** 
+*   **权限/显隐策略：**
     *   默认隐藏。
     *   激活方式：快速点击 Logo 5 次，或 `Ctrl + Shift + D`。
-*   **视觉规范：** 
+*   **视觉规范：**
     *   采用“暗色矩阵”风格（与主色调形成对比）。
     *   等宽字体 (JetBrains Mono / Cascadia Code)。
     *   高密度布局，支持折叠 JSON 树。
-*   **性能影响：** 
+*   **性能影响：**
     *   开启时才建立轮询或监听。
     *   限制 DOM 节点最大数量（如仅保留最近 200 条记录），防止长时间挂载导致页面卡死。
 *   **错误状态：** 红色高亮显示 5xx 错误，并提供一键复制错误堆栈的功能。
@@ -1647,7 +1647,7 @@ __________________
 
 # Source Section：03B Supplement /api/jobs
 
-> 原稿文件：`gemini_luminous_frontend_03b_supplement_jobs_api_20260723_221735.md`
+> 原稿文件：`archive/gemini_design_round_20260723/gemini_luminous_frontend_03b_supplement_jobs_api_20260723_221735.md`
 
 # Batch 3B Supplement：`/api/jobs` 后台任务审计映射
 

@@ -542,10 +542,14 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
         if not candidate.exists() or not candidate.is_file():
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
             return
-        content_type = mimetypes.guess_type(candidate.name)[0] or "application/octet-stream"
+        content_type = (
+            "application/manifest+json"
+            if candidate.suffix == ".webmanifest"
+            else mimetypes.guess_type(candidate.name)[0] or "application/octet-stream"
+        )
         data = candidate.read_bytes()
         self.send_response(HTTPStatus.OK)
-        self._send_common_headers()
+        self._send_common_headers(cache_control="no-cache")
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
@@ -566,11 +570,14 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
-    def _send_common_headers(self) -> None:
+    def _send_common_headers(self, *, cache_control: str = "no-store") -> None:
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", cache_control)
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Permissions-Policy", "camera=(), geolocation=()")
 
     def _query_params(self, query: str) -> dict[str, list[str]]:
         return parse_qs(query, keep_blank_values=True)

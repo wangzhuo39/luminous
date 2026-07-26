@@ -31,10 +31,11 @@
 - Life Flow：任务与步骤、例行与打卡、活动会话、日记、统一时间线和 Today 聚合。
 - Worker：状态衰减、主动 tick、outbox 投递、记忆整理、reindex、例行到期与活动过期处理。
 - Trace / Ledger：对话、记忆、状态、主动联系和 worker job 都有事件记录。
+- Frontend S1–S5：晶格温室主场景、核心陪伴、Today 生活流、Outbox/Memory/Privacy 静默空间，以及可安装 PWA、静态离线壳、空间深链和未发送草稿恢复。
 
 当前仍未完成的产品层能力：
 
-- 可安装 PWA、浏览器系统通知和通知深链等可触达入口。
+- 浏览器系统通知、Push/VAPID 与通知资源深链；当前无订阅和安全投递契约，前端没有请求权限或伪造能力。
 - 共读、共听歌等内容型共享活动；共同任务与日常打卡已具备基础闭环。
 - 多角色 / 多关系槽位。
 - 语音、外呼、语音信箱。
@@ -54,7 +55,7 @@ MemoryEngine + StateEngine + ProactiveEngine
   ↓
 PromptBuilder + NotificationBridge + Worker + Ledger
   ↓
-网页端测试入口
+晶格温室网页端 / PWA 壳层
   ↓
 未来 app / Live2D / Voice / Perception
 ```
@@ -93,7 +94,7 @@ PromptBuilder + NotificationBridge + Worker + Ledger
 
 ### 3.3 Web / App 壳层
 
-当前先用 `apps/companion-web/` 做网页端测试。它不是最终边界，后续可以换成：
+当前 `apps/companion-web/` 已是可运行的单文档网页端：包含核心对话、生活流、静默空间、PWA 安装、静态离线壳和空间级 URL。它仍不是最终平台边界，后续可以扩展或迁移为：
 
 - app。
 - Live2D / VRM。
@@ -102,6 +103,8 @@ PromptBuilder + NotificationBridge + Worker + Ledger
 - 伴侣空间。
 
 后端运行时应保持前端无关。
+
+网页端只通过 adapter 白名单消费用户可见 DTO；内部 thinking、prompt、trace、memory evidence 和 raw response 不进入普通 UI、AppState 或 storage。完整前端状态见 [front_design/README.md](front_design/README.md)。
 
 ## 4. 当前 API
 
@@ -171,6 +174,9 @@ luminous-api --host 127.0.0.1 --port 8000 --mock
 3. [docs/research/ai_companion_landscape.md](research/ai_companion_landscape.md)
 4. [docs/architecture/roleplay_companion_architecture.md](architecture/roleplay_companion_architecture.md)
 5. [docs/architecture/companion_foundation_implementation_roadmap.md](architecture/companion_foundation_implementation_roadmap.md)
+6. [docs/front_design/README.md](front_design/README.md)
+7. [docs/front_design/FRONTEND_AGENT_HANDOFF.md](front_design/FRONTEND_AGENT_HANDOFF.md)
+8. [docs/front_design/frontend_architecture_v1.md](front_design/frontend_architecture_v1.md)
 
 如果你要理解模型人格训练底座：
 
@@ -183,6 +189,6 @@ luminous-api --host 127.0.0.1 --port 8000 --mock
 
 栖光的底层方向已经从“能不能做出角色样本”转为“能不能形成长期陪伴关系”。
 
-当前基础功能已可端到端运行。下一轮尚未批准；已明确后置共读和数据迁移。若继续扩展而不进入这两项，优先候选是 PWA、浏览器系统通知与通知深链，为既有主动联系补齐可触达入口。
+当前基础功能和 S1–S5 网页端已可端到端运行。下一轮尚未批准；共读、数据迁移、系统通知、Push、账号同步和公开部署均需新的产品需求与后端安全契约，不能仅靠前端本地状态补齐。
 
 完整状态与候选边界见 [docs/planning/README.md](planning/README.md)。

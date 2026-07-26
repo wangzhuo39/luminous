@@ -1,0 +1,38 @@
+/* Central motion policy, including explicit reduced-motion behavior. */
+
+#chat-input,
+#send-button,
+.portal-btn,
+.dialog-close-btn,
+.luminous-dialog {
+  transition-duration: var(--duration-fast);
+  transition-timing-function: var(--ease-standard);
+}
+
+@media (max-width: 768px) {
+  .luminous-dialog {
+    transform: translateY(24px);
+  }
+
+  .luminous-dialog[open] {
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+body[data-reduced-motion="true"] *,
+body[data-reduced-motion="true"] *::before,
+body[data-reduced-motion="true"] *::after {
+  scroll-behavior: auto !important;
+  animation: none !important;
+  transition-duration: 0.01ms !important;
+}

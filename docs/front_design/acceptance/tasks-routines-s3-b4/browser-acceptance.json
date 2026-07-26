@@ -1,0 +1,20 @@
+{
+  "passed": true,
+  "results": [
+    {
+      "name": "fixture-desktop",
+      "passed": true,
+      "screenshots": 4
+    },
+    {
+      "name": "fixture-mobile",
+      "passed": true,
+      "screenshots": 1
+    },
+    {
+      "name": "api-error-double-submit",
+      "passed": true,
+      "screenshots": 1
+    }
+  ]
+}

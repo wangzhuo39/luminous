@@ -1,0 +1,20 @@
+{
+  "passed": true,
+  "results": [
+    {
+      "name": "fixture-lifecycle-desktop",
+      "passed": true,
+      "screenshots": 6
+    },
+    {
+      "name": "fixture-create-mobile-reduced",
+      "passed": true,
+      "screenshots": 1
+    },
+    {
+      "name": "api-create-error-exact-contract",
+      "passed": true,
+      "screenshots": 1
+    }
+  ]
+}

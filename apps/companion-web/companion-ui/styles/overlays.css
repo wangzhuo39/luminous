@@ -1,0 +1,118 @@
+/* Luminous S1: four quiet, secondary spaces around the companion scene. */
+
+.luminous-dialog {
+  width: min(90vw, 480px);
+  margin: auto;
+  padding: var(--space-lg);
+  color: var(--color-text-primary);
+  background: rgba(10, 12, 16, 0.86);
+  border: 1px solid var(--color-surface-border);
+  border-radius: 16px;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  transform: scale(0.97);
+  transition:
+    opacity var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
+}
+
+.luminous-dialog[open] {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.luminous-dialog::backdrop {
+  background: rgba(10, 12, 16, 0.58);
+}
+
+@supports (backdrop-filter: blur(16px)) {
+  .luminous-dialog {
+    background: rgba(10, 12, 16, 0.72);
+  }
+
+  .luminous-dialog::backdrop {
+    background: rgba(10, 12, 16, 0.3);
+    backdrop-filter: blur(16px) saturate(120%);
+  }
+}
+
+.luminous-dialog[data-space="today"] {
+  border-top: 3px solid var(--color-accent-cool);
+}
+
+.luminous-dialog[data-space="outbox"] {
+  border-top: 3px solid var(--color-accent-warm);
+}
+
+.luminous-dialog[data-space="memory"] {
+  border-top: 3px solid #c1b2d8;
+}
+
+.luminous-dialog[data-space="privacy"] {
+  border-top: 3px solid #b3c9c3;
+}
+
+.dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.dialog-title {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.dialog-subtitle,
+.dialog-caption,
+.dialog-prompt,
+.dialog-status {
+  color: var(--color-text-secondary);
+}
+
+.dialog-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--color-surface-border);
+  list-style: none;
+}
+
+.dialog-list li {
+  line-height: var(--line-height-prose);
+}
+
+.dialog-list h3 {
+  margin-bottom: 4px;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-md);
+  font-weight: 500;
+}
+
+.dialog-list p,
+.dialog-status {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.dialog-close-btn {
+  align-self: flex-start;
+  min-width: 72px;
+  margin-top: var(--space-sm);
+  padding: var(--space-xs) var(--space-sm);
+  color: var(--color-text-secondary);
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-border);
+  border-radius: 8px;
+  transition:
+    color var(--duration-fast) var(--ease-standard),
+    background var(--duration-fast) var(--ease-standard);
+}
+
+.dialog-close-btn:hover {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
+}

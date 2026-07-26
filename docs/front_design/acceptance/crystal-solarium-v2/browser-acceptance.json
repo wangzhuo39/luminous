@@ -1,0 +1,81 @@
+{
+  "generatedAt": "2026-07-26T10:44:24.736Z",
+  "results": [
+    {
+      "name": "desktop",
+      "passed": true,
+      "screenshots": 6,
+      "scene": {
+        "solarPhase": "dawn",
+        "environmentTone": "calm",
+        "sceneBackground": "radial-gradient(36% 32% at 50% 24%, rgba(225, 242, 238, 0.22), rgba(0, 0, 0, 0) 74%), radial-gradient(85% 54% at 50% 112%, rgba(222, 178, 144, 0.13), rgba(0, 0, 0, 0) 72%), linear-gradient(162deg, rgb(10, 24, 34) 0%, rgb(24, 51, 66) 48%, rgb(16, 35, 45) 78%, rgb(3, 9, 15) 100%)",
+        "rayFocus": "0.56",
+        "breathPeriod": "9.2s",
+        "decorationHidden": "true",
+        "perspective": "1200px",
+        "architectureImage": "none",
+        "architectureOpacity": 1,
+        "vaultPathCount": 15,
+        "vaultFrameStroke": "url(\"#vault-edge-light\")",
+        "todayShapeBackground": "linear-gradient(112deg, rgba(245, 254, 255, 0.12), rgba(0, 0, 0, 0) 34%, rgba(0, 0, 0, 0) 72%, rgba(154, 210, 224, 0.07)), none",
+        "todayShapeClip": "polygon(14% 0px, 100% 8%, 92% 91%, 67% 100%, 3% 83%, 0px 16%)",
+        "memoryFacetCount": 2,
+        "privacyShapeFilter": "blur(14px) saturate(0.82)",
+        "letterShapeClip": "polygon(4% 0px, 96% 5%, 100% 88%, 84% 100%, 0px 91%)",
+        "raysBlend": "screen",
+        "prismFilter": "blur(9px) saturate(1.22)",
+        "prismClip": "polygon(47% 0px, 100% 23%, 86% 83%, 55% 100%, 5% 72%, 0px 18%)",
+        "inputFilter": "blur(17px) saturate(1.16)",
+        "inputBorderTop": "rgba(235, 250, 255, 0.42)",
+        "horizontalOverflow": 0
+      },
+      "dialogMaterial": {
+        "background": "rgba(0, 0, 0, 0)",
+        "borderTopWidth": "0px",
+        "materialBackground": "linear-gradient(90deg, rgba(209, 239, 246, 0.11), rgba(10, 22, 32, 0.52) 18%, rgba(4, 12, 20, 0.66) 74%, rgba(5, 14, 22, 0.2)), radial-gradient(120% 54% at 0px 42%, rgba(179, 226, 237, 0.13), rgba(0, 0, 0, 0) 68%)",
+        "materialFilter": "blur(25px) saturate(1.18)",
+        "radius": "20px"
+      },
+      "memoryMaterial": {
+        "width": 589,
+        "clip": "polygon(9% 0px, 78% 4%, 100% 24%, 92% 79%, 72% 100%, 13% 92%, 0px 63%, 3% 18%)"
+      },
+      "outboxMaterial": {
+        "right": 111,
+        "clip": "polygon(1% 0px, 96% 4%, 100% 88%, 91% 100%, 0px 94%)"
+      },
+      "privacyMaterial": {
+        "width": 1440,
+        "viewportWidth": 1440,
+        "filter": "blur(42px) saturate(0.72)",
+        "contentCenterY": 500,
+        "viewportCenterY": 500
+      }
+    },
+    {
+      "name": "mobile",
+      "passed": true,
+      "screenshots": 2,
+      "mobile": {
+        "dialogBottom": 844,
+        "viewportHeight": 844,
+        "dialogRadius": "24px",
+        "prismRightDisplay": "none",
+        "inputRadius": "26px",
+        "keyboardState": "",
+        "horizontalOverflow": 0,
+        "portalTops": [
+          542,
+          584,
+          552,
+          590
+        ]
+      }
+    },
+    {
+      "name": "reduced-motion",
+      "passed": true,
+      "translation": "0px"
+    }
+  ]
+}

@@ -1,0 +1,182 @@
+/*
+ * Luminous S1 Design Tokens
+ * 严格遵循“晶格温室”隐喻，无高饱和度色块，无纯黑纯白。
+ */
+:root {
+  /* --- Colors --- */
+  --color-background: #0A0C10;
+  --color-text-primary: rgba(240, 244, 248, 0.95);
+  --color-text-secondary: rgba(165, 196, 212, 0.7);
+  --color-accent-warm: #F4E8D1;
+  --color-accent-cool: #A5C4D4;
+
+  /* 表面材质 (替代过度玻璃拟态) */
+  --color-surface: rgba(255, 255, 255, 0.04);
+  --color-surface-hover: rgba(255, 255, 255, 0.08);
+  --color-surface-border: rgba(255, 255, 255, 0.08);
+
+  /* --- Typography --- */
+  --font-family-sans: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-size-base: 16px;
+  --font-size-lg: 1.125rem;
+  --font-size-md: 1rem;
+  --font-size-sm: 0.875rem;
+  --line-height-prose: 1.75;
+  --letter-spacing-prose: 0.03em;
+
+  /* --- Spacing --- */
+  --space-xs: 8px;
+  --space-sm: 16px;
+  --space-md: 24px;
+  --space-lg: 40px;
+  --space-xl: 64px;
+
+  /* --- Sizing --- */
+  --input-height: 52px;
+  --safe-area-bottom: env(safe-area-inset-bottom, 24px);
+  --safe-area-top: env(safe-area-inset-top, 24px);
+
+  /* --- Z-Index Layers --- */
+  --z-index-background: 0;
+  --z-index-subject: 150;
+  --z-index-foreground: 300;
+  --z-index-input: 400;
+  --z-index-portals: 600;
+  --z-index-overlay: 1000;
+
+  /* --- Motion --- */
+  --duration-fast: 0.2s;
+  --duration-normal: 0.4s;
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* --- Environment Tones --- */
+  --tone-calm: rgba(165, 196, 212, 0.1);
+  --tone-warm: rgba(244, 232, 209, 0.12);
+  --tone-quiet: rgba(120, 132, 141, 0.25);
+  --tone-concerned: rgba(180, 165, 212, 0.15);
+}
+
+/* Crystal Solarium optical foundation. Kept together so the art direction can
+ * evolve without coupling environmental state to feature-specific selectors. */
+:root {
+  --color-glass-edge: rgba(235, 250, 255, 0.42);
+  --color-glass-edge-soft: rgba(225, 246, 255, 0.14);
+  --color-glass-dark: rgba(7, 15, 24, 0.62);
+  --color-water-surface: rgba(165, 215, 230, 0.13);
+  --color-caustic-cyan: rgba(165, 240, 255, 0.24);
+  --color-caustic-blue: rgba(104, 154, 255, 0.16);
+  --color-dawn-refraction: rgba(244, 222, 191, 0.15);
+  --color-danger-soft: #d4a5a5;
+  --scene-perspective: 1200px;
+  --solarium-perspective: 1200px;
+  --solarium-origin-y: 45%;
+  --floor-height: 28vh;
+  --vault-line: rgba(220, 246, 251, 0.22);
+  --vault-line-faint: rgba(184, 225, 236, 0.1);
+  --vault-window-core: rgba(225, 246, 250, 0.26);
+  --ray-warm: rgba(244, 222, 191, 0.16);
+  --ray-cool: rgba(178, 226, 240, 0.14);
+  --water-edge: rgba(216, 244, 249, 0.2);
+  --mist-color: rgba(181, 220, 232, 0.08);
+  --object-focus-ring:
+    0 0 0 2px rgba(224, 248, 252, 0.6),
+    0 0 24px rgba(164, 211, 229, 0.34);
+  --shadow-crystal:
+    inset 1px 1px 1px rgba(255, 255, 255, 0.34),
+    inset -1px -1px 5px var(--color-glass-dark),
+    0 18px 44px rgba(0, 0, 0, 0.28),
+    -2px 0 10px rgba(165, 240, 255, 0.12),
+    2px 0 10px rgba(154, 126, 255, 0.08);
+  --shadow-water-tension:
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    inset 0 4px 12px rgba(197, 238, 246, 0.08),
+    inset 0 -18px 30px rgba(2, 10, 18, 0.28),
+    0 -8px 34px rgba(165, 224, 238, 0.1);
+  --material-life-bg:
+    linear-gradient(142deg, rgba(215, 239, 247, 0.105), rgba(8, 17, 27, 0.47) 48%, rgba(3, 10, 18, 0.62));
+  --material-memory-bg:
+    linear-gradient(145deg, rgba(190, 223, 235, 0.15), rgba(75, 87, 124, 0.2) 45%, rgba(5, 12, 22, 0.52));
+  --material-letter-bg:
+    linear-gradient(165deg, rgba(244, 232, 209, 0.13), rgba(36, 40, 43, 0.34) 38%, rgba(6, 13, 20, 0.55));
+  --material-privacy-bg: rgba(8, 15, 22, 0.38);
+}
+
+/* 减弱动态效果支持 */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0.01ms;
+    --duration-normal: 0.01ms;
+  }
+}
+
+/* --- Environment & Status Variables --- */
+body {
+  --env-tone-brightness: 1;
+  --env-status-brightness: 1;
+  --env-status-saturation: 1;
+  --env-status-blur: blur(0px);
+  --env-status-color: transparent;
+  --env-tone-color: var(--tone-calm);
+  --env-transition-duration: 3s;
+  --env-transition-ease: ease-out;
+}
+
+body[data-tone="calm"],
+body[data-tone="unknown"] {
+  --env-tone-color: var(--tone-calm);
+}
+
+body[data-tone="warm"] {
+  --env-tone-color: var(--tone-warm);
+}
+
+body[data-tone="quiet"] {
+  --env-tone-color: var(--tone-quiet);
+  --env-tone-brightness: 0.85;
+}
+
+body[data-tone="concerned"] {
+  --env-tone-color: var(--tone-concerned);
+}
+
+body[data-app-status="loading"] {
+  --env-status-brightness: 0.7;
+  --env-status-blur: blur(6px);
+  --env-status-color: rgba(10, 12, 16, 0.2);
+  --env-transition-duration: 2s;
+  --env-transition-ease: ease-in-out;
+}
+
+body[data-app-status="offline"] {
+  --env-status-brightness: 0.7;
+  --env-status-saturation: 0.5;
+  --env-status-blur: blur(4px);
+  --env-status-color: rgba(10, 12, 16, 0.3);
+  --env-transition-duration: 4s;
+  --env-transition-ease: ease-in-out;
+}
+
+body[data-app-status="error"] {
+  --env-status-brightness: 0.85;
+  --env-status-color: rgba(20, 22, 26, 0.2);
+  --env-transition-duration: 1s;
+  --env-transition-ease: ease-out;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  body[data-app-status="offline"] {
+    --env-status-color: rgba(10, 12, 16, 0.7);
+  }
+
+  body[data-app-status="loading"] {
+    --env-status-color: rgba(10, 12, 16, 0.5);
+  }
+
+  body[data-app-status="error"] {
+    --env-status-color: rgba(20, 22, 26, 0.35);
+  }
+
+  body[data-tone="quiet"] {
+    --env-tone-color: rgba(120, 132, 141, 0.4);
+  }
+}

@@ -1,0 +1,272 @@
+/*
+ * Luminous S1 Scene Styles
+ * 负责主场景纵深、人物裁切、对话流、输入区及覆盖层。
+ */
+
+/* --- 场景主容器 --- */
+.scene-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+/* Environment layers sit above the companion and below all foreground UI. */
+.scene-container::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 200;
+  pointer-events: none;
+  background-color: var(--env-tone-color);
+  transition: background-color var(--env-transition-duration) var(--env-transition-ease);
+}
+
+.scene-container::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 201;
+  pointer-events: none;
+  background-color: var(--env-status-color);
+  backdrop-filter: var(--env-status-blur)
+    brightness(calc(var(--env-tone-brightness) * var(--env-status-brightness)))
+    saturate(var(--env-status-saturation));
+  -webkit-backdrop-filter: var(--env-status-blur)
+    brightness(calc(var(--env-tone-brightness) * var(--env-status-brightness)))
+    saturate(var(--env-status-saturation));
+  transition:
+    background-color var(--env-transition-duration) var(--env-transition-ease),
+    backdrop-filter var(--env-transition-duration) var(--env-transition-ease),
+    -webkit-backdrop-filter var(--env-transition-duration) var(--env-transition-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scene-container::before,
+  .scene-container::after {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+body[data-reduced-motion="true"] .scene-container::before,
+body[data-reduced-motion="true"] .scene-container::after {
+  transition-duration: 0.01ms !important;
+}
+
+.scene-background {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-index-background);
+  background-color: var(--color-background);
+}
+
+/* --- 人物主体层 --- */
+.companion-container {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-index-subject);
+  /*
+   * 针对 companion.png (角色设定图) 进行精确裁切与定位。
+   * 放大背景并偏移，仅展示中央人物主体，避免海报感。
+   */
+  background-image: url('../companion.png');
+  background-size: 200%;
+  background-position: 50% 0%;
+  background-repeat: no-repeat;
+  /* 底部强羽化，自然融入水面输入区 */
+  -webkit-mask-image: linear-gradient(to bottom, black 50%, transparent 95%);
+  mask-image: linear-gradient(to bottom, black 50%, transparent 95%);
+  opacity: 0.95;
+}
+
+/* --- 对话流 --- */
+#dialogue-stream {
+  position: relative;
+  z-index: var(--z-index-foreground);
+  width: 100%;
+  max-width: 640px;
+  padding: var(--space-md);
+  padding-bottom: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.message {
+  line-height: var(--line-height-prose);
+  letter-spacing: var(--letter-spacing-prose);
+  /* 确保在复杂人物背景上依然清晰可读 */
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+}
+
+.user-message {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.assistant-message {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-lg);
+}
+
+/* --- 输入区 --- */
+.input-surface-container {
+  position: relative;
+  z-index: var(--z-index-input);
+  width: 100%;
+  max-width: 640px;
+  margin-bottom: var(--safe-area-bottom);
+  padding: 0 var(--space-md);
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-sm);
+}
+
+#chat-input {
+  flex: 1;
+  min-height: var(--input-height);
+  padding: 14px var(--space-md);
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-border);
+  border-radius: 26px;
+  line-height: 1.5;
+  transition: background var(--duration-fast) var(--ease-standard);
+}
+
+#chat-input:focus {
+  background: var(--color-surface-hover);
+}
+
+#send-button {
+  width: var(--input-height);
+  height: var(--input-height);
+  border-radius: 50%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-secondary);
+  transition: color var(--duration-fast) var(--ease-standard), background var(--duration-fast) var(--ease-standard);
+}
+
+#send-button:hover {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
+}
+
+#send-button:disabled {
+  cursor: default;
+  opacity: 0.36;
+  transform: none;
+}
+
+/* --- 空间入口 (Portals) --- */
+.portals-container {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-index-portals);
+  pointer-events: none;
+}
+
+.portal-btn {
+  position: absolute;
+  pointer-events: auto;
+  padding: var(--space-sm) var(--space-md);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  letter-spacing: 0.05em;
+  opacity: 0.5;
+  transition: opacity var(--duration-fast) var(--ease-standard);
+}
+
+.portal-btn:hover {
+  opacity: 1;
+}
+
+.portal-unread-badge {
+  display: none;
+  min-width: 1.2rem;
+  margin-inline-start: 0.25rem;
+  color: var(--color-accent-warm);
+  font-size: 0.75rem;
+}
+
+.portal-btn.has-unread .portal-unread-badge {
+  display: inline-block;
+}
+
+.portal-top-left { top: var(--space-lg); left: var(--space-lg); }
+.portal-mid-left { top: 45%; left: var(--space-lg); transform: translateY(-50%); }
+.portal-top-right { top: var(--space-lg); right: var(--space-lg); }
+.portal-bottom-right { bottom: var(--space-lg); right: var(--space-lg); }
+
+/* --- 覆盖层 (Overlays) --- */
+#overlay-manager {
+  position: absolute;
+  z-index: var(--z-index-overlay);
+}
+
+.luminous-dialog {
+  margin: auto;
+  background: rgba(10, 12, 16, 0.9);
+  border: 1px solid var(--color-surface-border);
+  border-radius: 16px;
+  color: var(--color-text-primary);
+  padding: var(--space-xl);
+  width: 90vw;
+  max-width: 480px;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.6);
+}
+
+.luminous-dialog::backdrop {
+  background: rgba(10, 12, 16, 0.7);
+}
+
+@supports (backdrop-filter: blur(20px)) {
+  .luminous-dialog::backdrop {
+    background: rgba(10, 12, 16, 0.4);
+    backdrop-filter: blur(20px) saturate(150%);
+  }
+}
+
+.dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.dialog-close-btn {
+  margin-top: var(--space-md);
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-border);
+  border-radius: 8px;
+  align-self: flex-start;
+}
+
+/* --- 响应式适配 (Mobile) --- */
+@media (max-width: 768px) {
+  .companion-container {
+    /* 移动端进一步放大并调整位置，确保面部特写在键盘弹起时依然可见 */
+    background-size: 380%;
+    background-position: 32% 8%;
+    mask-image: linear-gradient(to bottom, black 40%, transparent 85%);
+  }
+
+  .portal-btn {
+    padding: var(--space-xs) var(--space-sm);
+  }
+
+  .portal-top-left { top: var(--safe-area-top); left: var(--space-sm); }
+  .portal-mid-left { top: 35%; left: var(--space-sm); }
+  .portal-top-right { top: var(--safe-area-top); right: var(--space-sm); }
+  .portal-bottom-right { bottom: calc(var(--safe-area-bottom) + 90px); right: var(--space-sm); }
+
+  .luminous-dialog {
+    padding: var(--space-md);
+  }
+}

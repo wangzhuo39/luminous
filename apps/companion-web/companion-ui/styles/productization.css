@@ -1,0 +1,146 @@
+:root {
+  --product-prism-bg: rgba(228, 247, 250, 0.045);
+  --product-prism-border: rgba(218, 246, 249, 0.13);
+  --product-muted: rgba(229, 246, 249, 0.54);
+  --product-primary: rgba(242, 253, 255, 0.9);
+}
+
+.update-prism {
+  position: fixed;
+  z-index: 18;
+  top: max(1rem, env(safe-area-inset-top));
+  right: max(1.25rem, env(safe-area-inset-right));
+  min-height: 40px;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid var(--product-prism-border);
+  border-radius: 999px;
+  color: var(--product-muted);
+  background:
+    linear-gradient(115deg, rgba(207, 243, 249, 0.08), transparent 55%),
+    var(--product-prism-bg);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.08), 0 12px 32px rgba(3, 12, 18, 0.16);
+  backdrop-filter: blur(16px) saturate(112%);
+  -webkit-backdrop-filter: blur(16px) saturate(112%);
+  font: inherit;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: opacity 300ms ease, border-color 300ms ease, color 300ms ease;
+}
+
+.update-prism:hover,
+.update-prism:focus-visible {
+  color: var(--product-primary);
+  border-color: rgba(218, 246, 249, 0.28);
+}
+
+.update-prism:disabled {
+  pointer-events: none;
+  opacity: 0.22;
+}
+
+.draft-whisper {
+  position: absolute;
+  left: 1.1rem;
+  bottom: calc(100% + 0.45rem);
+  margin: 0;
+  color: rgba(236, 251, 253, 0.76);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  pointer-events: none;
+  text-shadow: 0 0 9px rgba(194, 239, 245, 0.28);
+}
+
+#privacy-overlay .privacy-form {
+  gap: 0.55rem;
+  padding: 0.7rem;
+  border: 1px solid rgba(214, 243, 247, 0.1);
+  border-radius: 1rem 0.35rem 1.1rem 0.5rem;
+  background:
+    radial-gradient(circle at 8% 4%, rgba(221, 249, 251, 0.075), transparent 34%),
+    linear-gradient(135deg, rgba(210, 241, 246, 0.03), rgba(4, 14, 22, 0.12));
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.045), 0 22px 54px rgba(1, 8, 13, 0.12);
+  backdrop-filter: blur(14px) saturate(108%);
+  -webkit-backdrop-filter: blur(14px) saturate(108%);
+}
+
+#privacy-overlay .privacy-row,
+#privacy-overlay .privacy-quiet-fieldset {
+  padding: 0.85rem 0.8rem;
+  border: 1px solid rgba(218, 244, 247, 0.055);
+  border-radius: 0.65rem 0.2rem 0.75rem 0.3rem;
+  background: linear-gradient(112deg, rgba(222, 248, 250, 0.025), transparent 62%);
+}
+
+#privacy-overlay .privacy-readonly {
+  margin: 0 0 0.15rem;
+  border-left-color: rgba(213, 242, 246, 0.24);
+}
+
+.privacy-install-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  margin-top: 1.25rem;
+  padding: 1rem 0 0.15rem;
+  padding: 1rem;
+  border: 1px solid rgba(210, 240, 245, 0.12);
+  border-radius: 0.45rem 1rem 0.55rem 1.15rem;
+  background:
+    linear-gradient(120deg, rgba(207, 243, 249, 0.055), transparent 52%),
+    rgba(4, 15, 23, 0.1);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.privacy-install-section[hidden] { display: none; }
+
+.privacy-install-section h3,
+.privacy-install-section p { margin: 0; }
+
+.privacy-install-section h3 {
+  color: var(--product-primary);
+  font-size: 0.95rem;
+  font-weight: 520;
+  letter-spacing: 0.08em;
+}
+
+.privacy-install-section p {
+  max-width: 35rem;
+  margin-top: 0.35rem;
+  color: var(--product-muted);
+  font-size: 0.82rem;
+  line-height: 1.65;
+}
+
+.install-button { flex: 0 0 auto; }
+
+body[data-app-status="offline"] .input-surface-container {
+  border-color: rgba(176, 210, 218, 0.11);
+  box-shadow: 0 18px 60px rgba(3, 10, 15, 0.18);
+}
+
+body[data-network="offline"] #dialogue-stream,
+body[data-app-status="offline"] #dialogue-stream {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .update-prism {
+    top: max(0.65rem, env(safe-area-inset-top));
+    right: max(0.75rem, env(safe-area-inset-right));
+    padding: 0.45rem 0.72rem;
+    font-size: 0.7rem;
+  }
+
+  .privacy-install-section {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .install-button { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .update-prism { transition: none; }
+}

@@ -1,0 +1,25 @@
+{
+  "passed": true,
+  "results": [
+    {
+      "name": "fixture-desktop",
+      "passed": true,
+      "screenshots": 3
+    },
+    {
+      "name": "fixture-mobile-long-body",
+      "passed": true,
+      "screenshots": 1
+    },
+    {
+      "name": "api-generated-patch-delete",
+      "passed": true,
+      "screenshots": 1
+    },
+    {
+      "name": "api-manual-error",
+      "passed": true,
+      "screenshots": 1
+    }
+  ]
+}
