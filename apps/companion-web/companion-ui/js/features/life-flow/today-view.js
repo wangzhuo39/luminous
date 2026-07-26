@@ -55,6 +55,7 @@ function safeInstant(value) {
 
 export function createTodayView(dom, { onResourceSelect = () => {} } = {}) {
   const expanded = new Set();
+  let resourcesExpanded = false;
   let resourceEntries = [];
   let returnTarget = null;
   const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
@@ -168,6 +169,15 @@ export function createTodayView(dom, { onResourceSelect = () => {} } = {}) {
     return folded.visibleCategories.length > 0 || folded.foldedCompleted !== null;
   }
 
+  function renderResourceNav(showToday) {
+    const shouldShow = showToday && resourcesExpanded;
+    if (dom.resourceNav) dom.resourceNav.hidden = !shouldShow;
+    if (dom.resourceNavToggle) {
+      dom.resourceNavToggle.setAttribute('aria-expanded', String(shouldShow));
+      dom.resourceNavToggle.textContent = shouldShow ? '收起' : '展开';
+    }
+  }
+
   function renderToday(today) {
     const hasData = today.data && typeof today.data === 'object';
     const pending = today.status === 'loading' || today.status === 'refreshing';
@@ -186,6 +196,7 @@ export function createTodayView(dom, { onResourceSelect = () => {} } = {}) {
       dom.clusters.replaceChildren();
       setLocalState(dom.todayState, today.error?.message || '今日暂时没有展开。', dom.todayRetry, true);
       announce('今日暂时没有展开');
+      renderResourceNav(true);
       return;
     }
 
@@ -195,6 +206,7 @@ export function createTodayView(dom, { onResourceSelect = () => {} } = {}) {
     } else if (today.status === 'error') {
       setLocalState(dom.todayState, today.error?.message || '刷新暂时没有完成。', dom.todayRetry, true);
     }
+    renderResourceNav(true);
     announce(today.status === 'refreshing' ? '正在让光线重新落定' : '今日光影已经展开');
   }
 
@@ -258,6 +270,10 @@ export function createTodayView(dom, { onResourceSelect = () => {} } = {}) {
   }
 
   dom.clusters.addEventListener('click', handleDisclosure);
+  dom.resourceNavToggle?.addEventListener('click', () => {
+    resourcesExpanded = !resourcesExpanded;
+    renderResourceNav(true);
+  });
 
   function render(lifeFlow) {
     const showToday = lifeFlow?.view === 'today';
@@ -278,6 +294,7 @@ export function createTodayView(dom, { onResourceSelect = () => {} } = {}) {
     dom.todayPanel.setAttribute('aria-hidden', String(!showToday));
     dom.timelinePanel.hidden = !showTimeline;
     dom.timelinePanel.setAttribute('aria-hidden', String(!showTimeline));
+    renderResourceNav(showToday);
     const date = safeDate(lifeFlow?.today?.data?.date);
     if (date) {
       dom.date.dateTime = lifeFlow.today.data.date;

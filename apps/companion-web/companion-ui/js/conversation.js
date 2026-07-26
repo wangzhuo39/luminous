@@ -13,6 +13,12 @@ function resizeInput(input) {
   input.style.height = `${Math.min(input.scrollHeight, 144)}px`;
 }
 
+function clearSubmittedInput(input) {
+  if (!input) return;
+  input.value = '';
+  resizeInput(input);
+}
+
 function replyAnnouncement(text) {
   const normalized = typeof text === 'string' ? text.replace(/\s+/g, ' ').trim() : '';
   return normalized.length > 240 ? `${normalized.slice(0, 237)}…` : normalized;
@@ -39,6 +45,7 @@ export function initConversation(dom, {
       if (submitLocalConversation(dom.chatInput?.value ?? '')) {
         onDraftSent();
         renderAndResize();
+        clearSubmittedInput(dom.chatInput);
         const messages = getState().viewModels?.conversation?.messages ?? [];
         announce(replyAnnouncement(messages.at(-1)?.text));
       }
@@ -62,6 +69,7 @@ export function initConversation(dom, {
       if (completeChatSubmission(payload, result)) {
         onDraftSent();
         renderAndResize();
+        clearSubmittedInput(dom.chatInput);
         dom.dialogueStream?.lastElementChild?.scrollIntoView({ block: 'nearest' });
         announce(replyAnnouncement(result.assistantMessage.text));
         dom.chatInput?.focus({ preventScroll: true });

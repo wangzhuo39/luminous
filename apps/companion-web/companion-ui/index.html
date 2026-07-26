@@ -22,6 +22,7 @@
   <link rel="stylesheet" href="styles/crystal-solarium.css">
   <link rel="stylesheet" href="styles/silent-spaces.css">
   <link rel="stylesheet" href="styles/productization.css">
+  <link rel="stylesheet" href="styles/layout-rebase.css">
 </head>
 <body data-js-loading="true">
   <main id="luminous-scene" class="scene-container">
@@ -106,6 +107,36 @@
       <div class="action-card-actions" data-hook="action-actions"></div>
     </section>
 
+    <nav id="portals-layer" class="portals-container" aria-label="空间功能入口">
+      <button id="today-portal" class="portal-btn portal-object portal-top-left" aria-label="打开今日摘要" aria-expanded="false" data-space="today" data-tier="primary">
+        <span class="portal-object__shape portal-time-shard" aria-hidden="true">
+          <span class="portal-time-shard__ticks"></span>
+        </span>
+        <span class="portal-object__label">今日</span>
+      </button>
+      <button id="memory-portal" class="portal-btn portal-object portal-mid-left" aria-label="探索记忆" aria-expanded="false" data-space="memory" data-tier="primary">
+        <span class="portal-object__shape portal-memory-crystal" aria-hidden="true">
+          <svg viewBox="0 0 80 96" focusable="false">
+            <path d="M39 3 74 28 66 74 41 93 8 70 4 25Z"></path>
+            <path d="m39 3 2 90M4 25l37 19 33-16M8 70l33-26 25 30"></path>
+          </svg>
+        </span>
+        <span class="portal-object__label">记忆</span>
+      </button>
+      <button id="privacy-portal" class="portal-btn portal-object portal-top-right" aria-label="打开隐私与设置" aria-expanded="false" data-space="privacy" data-tier="primary">
+        <span class="portal-object__shape portal-frost-pull" aria-hidden="true"></span>
+        <span class="portal-object__label">隐私</span>
+      </button>
+      <button id="outbox-portal" class="portal-btn portal-object portal-bottom-right" aria-label="查看来信" aria-expanded="false" data-hook="outbox-portal" data-space="outbox" data-tier="primary">
+        <span class="portal-object__shape portal-letter" aria-hidden="true">
+          <span class="portal-letter__fold"></span>
+          <span class="portal-object__core"></span>
+        </span>
+        <span class="portal-object__label">来信</span>
+        <span class="portal-unread-badge sr-only" data-hook="outbox-unread-count"></span>
+      </button>
+    </nav>
+
     <form id="input-surface" class="input-surface-container" data-hook="input-form" data-chat-status="idle">
       <div class="input-wrapper">
         <p id="draft-notice" class="draft-whisper" data-hook="draft-notice" aria-live="polite" hidden>昨夜的落笔还在。</p>
@@ -132,36 +163,6 @@
       <div class="sr-only" aria-live="polite" data-hook="a11y-status"></div>
     </form>
   </main>
-
-  <nav id="portals-layer" class="portals-container" aria-label="空间功能入口">
-    <button id="today-portal" class="portal-btn portal-object portal-top-left" aria-label="打开今日摘要" aria-expanded="false" data-space="today">
-      <span class="portal-object__shape portal-time-shard" aria-hidden="true">
-        <span class="portal-time-shard__ticks"></span>
-      </span>
-      <span class="portal-object__label">今日</span>
-    </button>
-    <button id="memory-portal" class="portal-btn portal-object portal-mid-left" aria-label="探索记忆" aria-expanded="false" data-space="memory">
-      <span class="portal-object__shape portal-memory-crystal" aria-hidden="true">
-        <svg viewBox="0 0 80 96" focusable="false">
-          <path d="M39 3 74 28 66 74 41 93 8 70 4 25Z"></path>
-          <path d="m39 3 2 90M4 25l37 19 33-16M8 70l33-26 25 30"></path>
-        </svg>
-      </span>
-      <span class="portal-object__label">记忆</span>
-    </button>
-    <button id="privacy-portal" class="portal-btn portal-object portal-top-right" aria-label="打开隐私与设置" aria-expanded="false" data-space="privacy">
-      <span class="portal-object__shape portal-frost-pull" aria-hidden="true"></span>
-      <span class="portal-object__label">隐私</span>
-    </button>
-    <button id="outbox-portal" class="portal-btn portal-object portal-bottom-right" aria-label="查看来信" aria-expanded="false" data-hook="outbox-portal" data-space="outbox">
-      <span class="portal-object__shape portal-letter" aria-hidden="true">
-        <span class="portal-letter__fold"></span>
-        <span class="portal-object__core"></span>
-      </span>
-      <span class="portal-object__label">来信</span>
-      <span class="portal-unread-badge sr-only" data-hook="outbox-unread-count"></span>
-    </button>
-  </nav>
 
   <div id="overlay-manager">
     <dialog id="today-overlay" class="luminous-dialog" aria-labelledby="today-title" data-space="today">
@@ -200,14 +201,20 @@
               </section>
             </div>
 
-            <nav class="resource-nav" aria-label="生活流" data-hook="resource-nav">
-              <button type="button" class="today-secondary-button" data-hook="activities-open">活动</button>
-              <button type="button" class="today-secondary-button" data-hook="diaries-open">日记</button>
-              <button type="button" class="today-secondary-button" data-hook="reminders-open">提醒</button>
-              <button type="button" class="today-secondary-button" data-hook="calendar-open">日历</button>
-              <button type="button" class="today-secondary-button" data-hook="tasks-open">任务</button>
-              <button type="button" class="today-secondary-button" data-hook="routines-open">日常</button>
-            </nav>
+            <section class="today-secondary-space" aria-label="更多生活流">
+              <div class="today-secondary-space-head">
+                <p class="today-secondary-space-label">更多生活流</p>
+                <button type="button" class="today-disclosure-button today-resource-toggle" data-hook="resource-nav-toggle" aria-controls="resource-nav-list" aria-expanded="false">展开</button>
+              </div>
+              <nav id="resource-nav-list" class="resource-nav" aria-label="更多生活流" data-hook="resource-nav" hidden>
+                <button type="button" class="today-secondary-button" data-hook="activities-open">活动</button>
+                <button type="button" class="today-secondary-button" data-hook="diaries-open">日记</button>
+                <button type="button" class="today-secondary-button" data-hook="reminders-open">提醒</button>
+                <button type="button" class="today-secondary-button" data-hook="calendar-open">日历</button>
+                <button type="button" class="today-secondary-button" data-hook="tasks-open">任务</button>
+                <button type="button" class="today-secondary-button" data-hook="routines-open">日常</button>
+              </nav>
+            </section>
 
             <div class="today-timeline-reveal">
               <button type="button" class="today-secondary-button" data-hook="timeline-reveal">回顾时间线</button>

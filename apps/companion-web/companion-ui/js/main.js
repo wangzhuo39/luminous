@@ -79,6 +79,8 @@ const dom = {
     todayState: document.querySelector('[data-hook="today-local-state"]'),
     todayRetry: document.querySelector('[data-hook="today-retry"]'),
     clusters: document.querySelector('[data-hook="today-clusters"]'),
+    resourceNavToggle: document.querySelector('[data-hook="resource-nav-toggle"]'),
+    resourceNav: document.querySelector('[data-hook="resource-nav"]'),
     timelineReveal: document.querySelector('[data-hook="timeline-reveal"]'),
     timelinePanel: document.querySelector('[data-hook="timeline-panel"]'),
     timelineBack: document.querySelector('[data-hook="timeline-back"]'),
@@ -294,6 +296,8 @@ function renderScene(viewModel) {
 
 function renderConversation(viewModel, draft) {
   if (dom.dialogueStream) {
+    const wasAtBottom = dom.dialogueStream.scrollHeight - dom.dialogueStream.clientHeight
+      - dom.dialogueStream.scrollTop <= 24;
     const fragment = document.createDocumentFragment();
     viewModel.messages.forEach((message) => {
       const messageElement = document.createElement('div');
@@ -304,6 +308,9 @@ function renderConversation(viewModel, draft) {
       fragment.appendChild(messageElement);
     });
     dom.dialogueStream.replaceChildren(fragment);
+    if (wasAtBottom) {
+      dom.dialogueStream.scrollTop = dom.dialogueStream.scrollHeight;
+    }
   }
   if (dom.chatInput && dom.chatInput.value !== draft) {
     dom.chatInput.value = draft;

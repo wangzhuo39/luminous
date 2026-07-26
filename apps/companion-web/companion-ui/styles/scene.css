@@ -88,11 +88,26 @@ body[data-reduced-motion="true"] .scene-container::after {
   z-index: var(--z-index-foreground);
   width: 100%;
   max-width: 640px;
+  min-height: 0;
+  max-height: min(52dvh, 480px);
   padding: var(--space-md);
   padding-bottom: var(--space-lg);
   display: flex;
   flex-direction: column;
   gap: var(--space-md);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  scroll-padding-block: var(--space-md);
+}
+
+#dialogue-stream::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .message {

@@ -3,6 +3,7 @@ import {
   completeInitialLoad,
   failInitialLoad,
   getState,
+  hydrateConversationHistory,
 } from './app-state.js';
 import { loadCompanionState } from './adapters/api-adapter.js';
 
@@ -45,12 +46,10 @@ export function initCoreRuntime({
     onStateChange();
 
     try {
-      const scene = await loadCompanionState({
-        signal: controller.signal,
-        dependencies,
-      });
+      const result = await loadCompanionState({ signal: controller.signal, dependencies });
       if (destroyed || currentVersion !== requestVersion) return false;
-      if (completeInitialLoad(scene)) {
+      hydrateConversationHistory(result.history);
+      if (completeInitialLoad(result.scene)) {
         announceOnce('ready', hasReachedReady ? '连接已经恢复。' : '栖光已经在这里。');
         hasReachedReady = true;
         onStateChange();

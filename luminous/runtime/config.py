@@ -28,6 +28,9 @@ class BackendConfig:
     notify_telegram_chat_id: str = ""
     notify_bark_url: str = ""
     notify_timeout_seconds: int = 10
+    deployment_mode: str = "local"
+    auth_token: str = ""
+    cors_origins: tuple[str, ...] = ()
 
     @property
     def llm_configured(self) -> bool:
@@ -50,6 +53,16 @@ class BackendConfig:
             or self.notify_bark_url
         )
 
+    @property
+    def public_deployment(self) -> bool:
+        return self.deployment_mode == "public"
+
+    def validate_server_boundary(self) -> None:
+        if self.deployment_mode not in {"local", "public"}:
+            raise ValueError("deployment mode must be local or public")
+        if self.public_deployment and (not self.auth_token or not self.cors_origins or "*" in self.cors_origins):
+            raise ValueError("public deployment requires an auth token and explicit CORS origins")
+
 
 def load_backend_config(
     project_root: Path = PROJECT_ROOT,
@@ -71,6 +84,20 @@ def load_backend_config(
                 return file_values[key]
         return default
 
+    deployment_mode = value(
+        "LUMINOUS_DEPLOYMENT_MODE", "ROLE_PLAY_DEPLOYMENT_MODE", default="local"
+    ).strip().lower()
+    if deployment_mode not in {"local", "public"}:
+        raise ValueError("deployment mode must be local or public")
+    auth_token = value("LUMINOUS_AUTH_TOKEN", "ROLE_PLAY_AUTH_TOKEN").strip()
+    cors_origins = tuple(
+        origin.strip()
+        for origin in value("LUMINOUS_CORS_ORIGINS", "ROLE_PLAY_CORS_ORIGINS").split(",")
+        if origin.strip()
+    )
+    if deployment_mode == "public" and (not auth_token or not cors_origins or "*" in cors_origins):
+        raise ValueError("public deployment requires an auth token and explicit CORS origins")
+
     return BackendConfig(
         project_root=root,
         env_path=env_file,
@@ -89,6 +116,9 @@ def load_backend_config(
         notify_telegram_chat_id=value("ROLE_PLAY_NOTIFY_TELEGRAM_CHAT_ID", default="").strip(),
         notify_bark_url=value("ROLE_PLAY_NOTIFY_BARK_URL", default="").strip(),
         notify_timeout_seconds=int(value("ROLE_PLAY_NOTIFY_TIMEOUT", default="10")),
+        deployment_mode=deployment_mode,
+        auth_token=auth_token,
+        cors_origins=cors_origins,
     )
 
 

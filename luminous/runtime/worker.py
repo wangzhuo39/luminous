@@ -60,13 +60,20 @@ class CompanionWorker:
             "pending_jobs": [job["job_id"] for job in self.store.read_jobs(status="queued", limit=20)],
         }
 
-    def run_once(self, job_type: str, payload: dict[str, Any] | None = None, *, now: datetime | None = None) -> dict[str, Any]:
+    def run_once(
+        self,
+        job_type: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        now: datetime | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
         now = now or self.clock()
         job_id = self.store.enqueue_job(
             job_type,
             payload or {},
             run_after=now,
-            idempotency_key=f"manual:{job_type}:{utc_now_iso(now)}",
+            idempotency_key=idempotency_key or f"manual:{job_type}:{utc_now_iso(now)}",
         )
         claimed = self.store.claim_due_jobs(now=now, limit=1)
         for job in claimed:
@@ -134,7 +141,7 @@ class CompanionWorker:
             )
             return WorkerRunResult(job_id=job_id, job_type=job_type, status="succeeded", result=result)
         except Exception as exc:  # noqa: BLE001 - worker should isolate failures per job.
-            self.store.fail_job(job_id, type(exc).__name__ + ": " + str(exc))
+            retrying = self.store.fail_job(job_id, type(exc).__name__ + ": " + str(exc))
             self.store.append_event(
                 make_event(
                     "worker_job_failed",
@@ -147,7 +154,7 @@ class CompanionWorker:
             return WorkerRunResult(
                 job_id=job_id,
                 job_type=job_type,
-                status="failed",
+                status="retrying" if retrying else "failed",
                 result={"error": type(exc).__name__, "detail": str(exc)},
             )
 

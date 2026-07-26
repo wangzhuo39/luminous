@@ -12,20 +12,22 @@
   ```bash
   cd /home/wz/luminous
   source .venv/bin/activate
-  python -m luminous.runtime.infrastructure.http --mock --host 0.0.0.0 --port 8000
+  python -m luminous.runtime.infrastructure.http --mock --host 127.0.0.1 --port 8000
   ```
 
 - 默认本地地址：`http://127.0.0.1:8000`。
 - 前端请求使用相对路径，例如 `fetch('/api/state')`，不要写死主机和端口。
 - JSON 写请求使用 `Content-Type: application/json`。
+- 默认是 `local` 单用户模式。公开部署必须显式设置 `LUMINOUS_DEPLOYMENT_MODE=public`、
+  `LUMINOUS_AUTH_TOKEN` 和 `LUMINOUS_CORS_ORIGINS`，并使用 `Authorization: Bearer <token>`。
 
 ## 2. 全局约定
 
 ### 响应与错误
 
-- 成功读取和更新通常返回 `200`；创建通常返回 `201`。
-- 参数或状态不合法返回 `400`，正文为 `{"error":"..."}`。
-- 聊天模型不可用返回 `503`；未处理异常返回 `500`；不存在的路径或资源返回 `404`。
+- 成功读取和更新通常返回 `200`；创建通常返回 `201`，无内容返回 `204`。
+- 错误统一为 `{"error":{"code":"invalid_request","message":"...","retryable":false}}`。
+- 参数或状态不合法返回 `400`；未认证 `401`；来源不允许 `403`；不存在的路径或资源 `404`；状态冲突或重复提交冲突 `409`；模型/依赖不可用 `503`。
 - 任何写操作只有在 HTTP 成功且 JSON 成功返回后才能在界面中确认成功。失败时保留用户输入，并给出重试机会。
 
 ### 列表与标识符
@@ -33,6 +35,8 @@
 - 列表响应统一从 `items` 读取，**不要**读取 `tasks`、`routines` 等猜测字段。
 - 资源 ID 不同：任务 `task_id`，习惯 `routine_id`，活动 `session_id`，日记 `entry_id`，提醒 `reminder_id`，日程 `event_id`。
 - 所有时间值使用 ISO 8601 字符串；空时间以空字符串表示。
+- 列表只支持 `limit` 分页，必须是服务端允许范围内的整数，当前 v1 不承诺 cursor/offset。
+- 写请求可带最长 128 字符的 `Idempotency-Key`；同 key 重放首次结果，复用 key 但请求体不同返回 `409`。
 
 ### 正常用户界面的安全边界
 
@@ -80,7 +84,7 @@ MemoryViewModel
 仅用于低打扰的连接诊断，不作为用户可见功能入口。
 
 ```json
-{"ok": true, "model": "...", "llm_configured": true, "mock": true}
+{"ok": true, "status": "ready"}
 ```
 
 ### `GET /api/state`
@@ -105,6 +109,10 @@ MemoryViewModel
 ```
 
 `mood`、`energy`、`support_need`、`risk_level` 只能转化为克制的光线、距离、静默感和文案语气，不能展示数值仪表盘或人格诊断。
+
+首屏恢复可请求 `GET /api/state?include=history`，响应额外包含严格公开的
+`history: {"limit","count","items":[{"message_id","role","content","created_at"}]}`。
+也可用 `GET /api/chat/history?limit=10` 单独读取最近对话；历史只允许 `user` 和 `assistant`。
 
 ### `POST /api/chat`
 
@@ -222,7 +230,7 @@ MemoryViewModel
 | --- | --- | --- |
 | 新建 | `POST /api/routines` | 提交习惯标题及频率/目标等配置；返回 `routine`。 |
 | 更新 | `PATCH /api/routines/{routine_id}` | 仅提交修改字段。 |
-| 打卡 | `POST /api/routines/{routine_id}/checkin` | 可提交当次记录；返回更新后的习惯/打卡结果。 |
+| 打卡 | `POST /api/routines/{routine_id}/checkins` | 可提交当次记录；返回更新后的习惯/打卡结果。 |
 | 删除 | `DELETE /api/routines/{routine_id}` | 以服务端返回为准。 |
 
 ### 活动 `activities`
@@ -231,7 +239,7 @@ MemoryViewModel
 | --- | --- | --- |
 | 新建 | `POST /api/activities` | 提交活动标题、计划时间或时长等；返回 `activity`，ID 为 `session_id`。 |
 | 状态转换 | `POST /api/activities/{session_id}/start`、`pause`、`resume`、`complete`、`cancel` | 活动状态：`planned`、`active`、`paused`、`completed`、`cancelled`、`expired`。 |
-| 删除 | `DELETE /api/activities/{session_id}` | 以服务端返回为准。 |
+| 删除 | `DELETE /api/activities/{session_id}` | v1 不提供，返回 `404`；活动只允许状态转换。 |
 
 ### 日记 `diary-entries`
 
@@ -289,10 +297,17 @@ MemoryViewModel
 
 当前支持的 action：`create_task`、`complete_task`、`start_focus_session`、`checkin_routine`、`draft_diary`。
 
+公开响应只保留最终内容和业务 DTO，不包含 `role_thinking`、`role_action`、`system_thinking`、
+`analysis`、`prompt`、`trace`、`ledger`、`jobs`、`export` 或原始数据库字段。
+
+内部审计/Worker 路由即使在后端存在，也不属于浏览器公开边界，统一返回 `404`。
+
 ## 9. 前端验收清单
 
-- 启动只读取必要数据：`/api/state`；Today、记忆、来信等按用户打开的空间懒加载。
+- 启动只读取必要数据：`/api/state?include=history`；Today、记忆、来信等按用户打开的空间懒加载。
 - 不对任何写操作做“已完成”的假乐观状态；可以显示进行中，但结果以服务端响应为准。
 - 所有失败都具备局部、安静的错误与重试状态，且不丢失草稿。
 - 常规导航不出现 ledger、trace、jobs、export、worker/proactive tick。
-- 先做静态体验时，使用 fixture 和上述展示模型；不要使用 `fetch`。后端联通由 adapter 层替换完成。
+- 浏览器网络响应不得出现内部字段；服务重启后聊天历史、记忆和生活流数据仍可读。
+- 使用固定 `Idempotency-Key` 重试写请求不会重复创建任务、来信或确认动作。
+- 先做静态体验时，使用 fixture 和上述展示模型；真实联调默认不带 `?mode=fixture`。

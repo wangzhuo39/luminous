@@ -16,6 +16,16 @@ from luminous.runtime.domain.state import CompanionState
 from luminous.runtime.domain.time import parse_iso_datetime, utc_now_iso
 
 
+class _ClosingConnection(sqlite3.Connection):
+    """Make the existing ``with self._connect()`` calls release connections."""
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
+
+
 class CompanionRuntimeStore:
     def __init__(self, base_dir: Path) -> None:
         self.base_dir = base_dir
@@ -223,32 +233,51 @@ class CompanionRuntimeStore:
         if not message_id:
             message_id = f"out_{utc_now_iso().replace(':', '').replace('-', '').replace('T', '_')}"
         created_at = str(payload.get("created_at", utc_now_iso()))
-        self._execute(
-            """
-            INSERT OR REPLACE INTO outbox (
-                message_id, signal_id, trace_id, channel, draft_text, status, score,
-                reason, signal_type, anchor_memory_ids_json, created_at, sent_at,
-                replied_at, payload_json, idempotency_key
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                message_id,
-                str(payload.get("signal_id", "")),
-                str(payload.get("trace_id", "")),
-                str(payload.get("channel", "internal")),
-                str(payload.get("draft_text") or payload.get("message", "")),
-                str(payload.get("status", "drafted")),
-                float(payload.get("score", 0.0)),
-                str(payload.get("reason", "")),
-                str(payload.get("signal_type", "")),
-                json.dumps(payload.get("anchor_memory_ids", []), ensure_ascii=False),
-                created_at,
-                str(payload.get("sent_at", "")),
-                str(payload.get("replied_at", "")),
-                json.dumps(payload, ensure_ascii=False),
-                str(payload.get("idempotency_key", message_id)),
-            ),
+        idempotency_key = str(payload.get("idempotency_key", message_id))
+        values = (
+            message_id,
+            str(payload.get("signal_id", "")),
+            str(payload.get("trace_id", "")),
+            str(payload.get("channel", "internal")),
+            str(payload.get("draft_text") or payload.get("message", "")),
+            str(payload.get("status", "drafted")),
+            float(payload.get("score", 0.0)),
+            str(payload.get("reason", "")),
+            str(payload.get("signal_type", "")),
+            json.dumps(payload.get("anchor_memory_ids", []), ensure_ascii=False),
+            created_at,
+            str(payload.get("sent_at", "")),
+            str(payload.get("replied_at", "")),
+            json.dumps(payload, ensure_ascii=False),
+            idempotency_key,
         )
+        with self._connect() as conn:
+            existing = conn.execute(
+                "SELECT message_id FROM outbox WHERE idempotency_key = ? OR message_id = ?",
+                (idempotency_key, message_id),
+            ).fetchone()
+            if existing is not None:
+                return str(existing["message_id"])
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO outbox (
+                        message_id, signal_id, trace_id, channel, draft_text, status, score,
+                        reason, signal_type, anchor_memory_ids_json, created_at, sent_at,
+                        replied_at, payload_json, idempotency_key
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    values,
+                )
+                conn.commit()
+            except sqlite3.IntegrityError:
+                existing = conn.execute(
+                    "SELECT message_id FROM outbox WHERE idempotency_key = ? OR message_id = ?",
+                    (idempotency_key, message_id),
+                ).fetchone()
+                if existing is not None:
+                    return str(existing["message_id"])
+                raise
         return message_id
 
     def read_memory_threads(self, limit: int | None = None) -> list[dict[str, Any]]:
@@ -741,6 +770,49 @@ class CompanionRuntimeStore:
         row = self._fetch_one("SELECT job_id FROM jobs WHERE idempotency_key = ?", (idem,))
         return str(row["job_id"]) if row else job_id
 
+    def reserve_api_idempotency(self, key: str, method: str, path: str) -> dict[str, Any]:
+        now = utc_now_iso()
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT method, path, status_code, response_json FROM api_idempotency WHERE idempotency_key = ?",
+                (key,),
+            ).fetchone()
+            if row is not None:
+                conn.commit()
+                if row["method"] != method or row["path"] != path:
+                    return {"state": "conflict"}
+                if row["status_code"]:
+                    return {
+                        "state": "completed",
+                        "status_code": int(row["status_code"]),
+                        "response_json": str(row["response_json"] or "{}"),
+                    }
+                return {"state": "in_flight"}
+            conn.execute(
+                """
+                INSERT INTO api_idempotency (
+                    idempotency_key, method, path, status_code, response_json, created_at, updated_at
+                ) VALUES (?, ?, ?, 0, '', ?, ?)
+                """,
+                (key, method, path, now, now),
+            )
+            conn.commit()
+        return {"state": "reserved"}
+
+    def complete_api_idempotency(self, key: str, status_code: int, response_json: str) -> None:
+        self._execute(
+            """
+            UPDATE api_idempotency
+            SET status_code = ?, response_json = ?, updated_at = ?
+            WHERE idempotency_key = ?
+            """,
+            (status_code, response_json, utc_now_iso(), key),
+        )
+
+    def release_api_idempotency(self, key: str) -> None:
+        self._execute("DELETE FROM api_idempotency WHERE idempotency_key = ? AND status_code = 0", (key,))
+
     def claim_due_jobs(
         self,
         *,
@@ -792,15 +864,28 @@ class CompanionRuntimeStore:
             (utc_now_iso(), payload, job_id),
         )
 
-    def fail_job(self, job_id: str, error: str) -> None:
+    def fail_job(self, job_id: str, error: str) -> bool:
+        row = self._fetch_one("SELECT attempts, max_attempts FROM jobs WHERE job_id = ?", (job_id,))
+        if row is None:
+            return False
+        now = datetime.now(timezone.utc)
+        retrying = int(row["attempts"]) < int(row["max_attempts"])
+        if retrying:
+            delay_seconds = min(300, 5 * (2 ** max(0, int(row["attempts"]) - 1)))
+            run_after = utc_now_iso(now + timedelta(seconds=delay_seconds))
+            status = "queued"
+        else:
+            run_after = utc_now_iso(now)
+            status = "failed"
         self._execute(
             """
             UPDATE jobs
-            SET status = 'failed', last_error = ?, locked_until = '', updated_at = ?
+            SET status = ?, run_after = ?, last_error = ?, locked_until = '', updated_at = ?
             WHERE job_id = ?
             """,
-            (error[:1000], utc_now_iso(), job_id),
+            (status, run_after, error[:1000], utc_now_iso(now), job_id),
         )
+        return retrying
 
     def read_events(
         self,
@@ -1812,6 +1897,19 @@ class CompanionRuntimeStore:
             )
             conn.execute(
                 """
+                CREATE TABLE IF NOT EXISTS api_idempotency (
+                    idempotency_key TEXT PRIMARY KEY,
+                    method TEXT NOT NULL,
+                    path TEXT NOT NULL,
+                    status_code INTEGER NOT NULL DEFAULT 0,
+                    response_json TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS reminders (
                     reminder_id TEXT PRIMARY KEY,
                     user_scope TEXT NOT NULL DEFAULT 'default',
@@ -1876,7 +1974,7 @@ class CompanionRuntimeStore:
             return False
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, factory=_ClosingConnection)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")

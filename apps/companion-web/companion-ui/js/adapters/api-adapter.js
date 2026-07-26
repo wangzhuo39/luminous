@@ -110,12 +110,38 @@ export function sanitizeChatHistory(history) {
 }
 
 export async function loadCompanionState(options = {}) {
-  const raw = await requestJson('/api/state', {
+  const raw = await requestJson('/api/state?include=history', {
     signal: options.signal,
     timeoutMs: options.timeoutMs ?? 15_000,
     dependencies: options.dependencies,
   });
-  return adaptStateResponse(raw);
+  return {
+    scene: adaptStateResponse(raw),
+    history: adaptChatHistoryResponse(raw.history ?? { items: [] }),
+  };
+}
+
+export function adaptChatHistoryResponse(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new AppError('server');
+  }
+  const items = Array.isArray(raw.items) ? raw.items : [];
+  return items.flatMap((item) => {
+    if (!item || (item.role !== 'user' && item.role !== 'assistant')) return [];
+    const text = safeText(item.content, MESSAGE_TEXT_LIMIT);
+    if (!text) return [];
+    const id = nextMessageId(item.message_id);
+    return [{ id, role: item.role, text }];
+  }).slice(-HISTORY_LIMIT);
+}
+
+export async function loadChatHistory(options = {}) {
+  const raw = await requestJson('/api/chat/history?limit=10', {
+    signal: options.signal,
+    timeoutMs: options.timeoutMs ?? 15_000,
+    dependencies: options.dependencies,
+  });
+  return adaptChatHistoryResponse(raw);
 }
 
 export async function sendChatMessage(message, history, options = {}) {

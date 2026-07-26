@@ -1,0 +1,123 @@
+/* Layout rebase: keep the optical scene, make the interaction plane natural-flow. */
+
+.scene-container {
+  gap: clamp(8px, 1.5dvh, 16px);
+  overflow: hidden;
+}
+
+#dialogue-stream {
+  flex: 1 1 auto;
+  min-height: clamp(140px, 22dvh, 240px);
+  max-height: min(44dvh, 480px);
+  margin: 0;
+}
+
+.action-preview-card {
+  flex: 0 0 auto;
+  width: min(calc(100% - 32px), 600px);
+  max-height: min(24dvh, 260px);
+  margin: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.action-preview-card::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.portals-container {
+  position: relative;
+  inset: auto;
+  z-index: var(--z-index-portals);
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: center;
+  width: min(100%, 960px);
+  height: 84px;
+  flex: 0 0 84px;
+  margin: 0 auto;
+  pointer-events: none;
+}
+
+.portal-btn,
+.portal-top-left,
+.portal-mid-left,
+.portal-top-right,
+.portal-bottom-right {
+  position: relative;
+  inset: auto;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  justify-self: center;
+  width: 72px;
+  height: 72px;
+  min-width: 48px;
+  min-height: 48px;
+  padding: 0;
+  pointer-events: auto;
+}
+
+.portal-top-left { grid-column: 1; }
+.portal-mid-left { grid-column: 2; }
+.portal-top-right { grid-column: 3; }
+.portal-bottom-right { grid-column: 4; }
+
+.input-surface-container {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+body[data-keyboard-visible="true"] .portals-container {
+  display: none;
+}
+
+body[data-keyboard-visible="true"] #dialogue-stream {
+  max-height: 28dvh;
+}
+
+@media (max-width: 768px) {
+  .scene-container {
+    gap: 8px;
+  }
+
+  #dialogue-stream {
+    min-height: clamp(120px, 20dvh, 200px);
+    max-height: min(42dvh, 380px);
+  }
+
+  .portals-container {
+    width: 100%;
+    height: 80px;
+    flex-basis: 80px;
+  }
+
+  .portal-btn,
+  .portal-top-left,
+  .portal-mid-left,
+  .portal-top-right,
+  .portal-bottom-right {
+    width: 64px;
+    height: 64px;
+  }
+
+  .input-surface-container {
+    width: 100%;
+  }
+}
+
+@media (max-width: 360px) {
+  .portal-btn,
+  .portal-top-left,
+  .portal-mid-left,
+  .portal-top-right,
+  .portal-bottom-right {
+    width: 56px;
+    height: 64px;
+  }
+}

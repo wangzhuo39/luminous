@@ -5,10 +5,12 @@
 - `luminous_frontend_design_spec_v1.md`: consolidated experience and visual direction.
 - `frontend_design_guidelines.md`: design, accessibility, and acceptance rules.
 - `frontend_architecture_v1.md`: living frontend engineering architecture, data flow, safety boundaries, and delivery phases.
+- `frontend_product_layering_guidance_v1.md`: product priority and frontend structure guidance for first-tier auxiliary spaces and secondary capabilities.
+- `frontend_user_operation_manual_v1.md`: user-facing operation manual for first-tier spaces, Today submenus, action confirmation, and common workflows.
 - `frontend_api_contract_v1.md`: frontend-facing backend contract for later integration.
 - `FRONTEND_AGENT_HANDOFF.md`: single handoff guide for the next design and implementation agent.
 - `GEMINI_API_OUTPUT_BOUNDARY_AND_BATCHING.md`: empirical Gemini output limits, batching, sentinel validation, retry, and concurrency rules.
-- `S2_S5_IMPLEMENTATION_TRACKER.md`: current batch completion state and remaining S2–S5 work.
+- `S2_S5_IMPLEMENTATION_TRACKER.md`: S2–S5 delivery record, completed batches, and explicitly deferred scope.
 - `s3_01_today_space_design_v1.md` through `s3_05_implementation_plan_v1.md`: active S3 design and batch baseline.
 - `s3_06_b4_implementation_contract_v1.md`: corrected Task/Routine state, navigation, DataSource and code-batch contract.
 - `s3_07_b5_activity_implementation_contract_v1.md`: implemented Activity state graph, DOM hooks, request, failure and visual acceptance contract.

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import hmac
 import json
+import logging
 import mimetypes
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -13,6 +15,20 @@ from luminous.runtime.application.service import CompanionService
 from luminous.runtime.infrastructure.client import ModelClientError
 
 
+LOGGER = logging.getLogger(__name__)
+INTERNAL_HTTP_ENDPOINTS = {
+    "/api/ledger",
+    "/api/trace",
+    "/api/jobs",
+    "/api/export",
+    "/api/proactive/tick",
+    "/api/worker/tick",
+    "/api/memory/threads",
+    "/api/memory/links",
+    "/api/memory/evidence",
+}
+
+
 class CompanionRequestHandler(BaseHTTPRequestHandler):
     service: CompanionService
     config: BackendConfig
@@ -20,35 +36,42 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
     server_version = "RolePlayCompanion/0.1"
 
     def do_OPTIONS(self) -> None:
+        if not self._origin_allowed():
+            self._send_error(HTTPStatus.FORBIDDEN, "origin_not_allowed", "origin is not allowed")
+            return
         self._send_empty(HTTPStatus.NO_CONTENT)
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         path = parsed.path
+        if not self._authorize(path):
+            return
         try:
             if path == "/api/health":
-                self._send_json(
-                    HTTPStatus.OK,
-                    {
-                        "ok": True,
-                        "model": self.config.model if self.config.llm_configured else "",
-                        "llm_configured": self.config.llm_configured,
-                        "mock": self.config.mock,
-                    },
-                )
+                self._send_json(HTTPStatus.OK, {"ok": True, "status": "ready" if self.config.mock or self.config.llm_configured else "degraded"})
+                return
+            if path in INTERNAL_HTTP_ENDPOINTS:
+                self._send_error(HTTPStatus.NOT_FOUND, "not_found", "not found")
                 return
             if path == "/api/state":
-                self._send_json(HTTPStatus.OK, self.service.get_state())
+                params = self._query_params(parsed.query)
+                include_history = params.get("include", [""])[0] == "history"
+                self._send_json(HTTPStatus.OK, self.service.get_state(include_history=include_history))
+                return
+            if path == "/api/chat/history":
+                params = self._query_params(parsed.query)
+                limit = self._query_limit(params, default=10, maximum=50)
+                self._send_json(HTTPStatus.OK, self.service.read_chat_history(limit=limit))
                 return
             if path == "/api/memory":
                 params = self._query_params(parsed.query)
                 query = params.get("q", [""])[0]
-                limit = int(params.get("limit", ["5"])[0])
+                limit = self._query_limit(params, default=5, maximum=50)
                 self._send_json(HTTPStatus.OK, self.service.query_memory(query, limit=limit))
                 return
             if path == "/api/ledger":
                 params = self._query_params(parsed.query)
-                limit = int(params.get("limit", ["50"])[0])
+                limit = self._query_limit(params, default=50, maximum=100)
                 trace_id = params.get("trace_id", [""])[0] or None
                 self._send_json(HTTPStatus.OK, self.service.read_ledger(limit=limit, trace_id=trace_id))
                 return
@@ -57,53 +80,24 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
                 trace_id = params.get("trace_id", [""])[0]
                 if not trace_id:
                     raise ValueError("trace_id is required")
-                limit = int(params.get("limit", ["50"])[0])
+                limit = self._query_limit(params, default=50, maximum=100)
                 self._send_json(HTTPStatus.OK, self.service.read_trace(trace_id, limit=limit))
                 return
             if path == "/api/outbox":
                 params = self._query_params(parsed.query)
-                limit = int(params.get("limit", ["50"])[0])
+                limit = self._query_limit(params, default=50, maximum=100)
                 status = params.get("status", [""])[0] or None
                 self._send_json(HTTPStatus.OK, self.service.read_outbox(limit=limit, status=status))
                 return
-            if path == "/api/memory/threads":
-                params = self._query_params(parsed.query)
-                limit = int(params.get("limit", ["50"])[0])
-                self._send_json(HTTPStatus.OK, self.service.read_memory_threads(limit=limit))
-                return
-            if path == "/api/memory/links":
-                params = self._query_params(parsed.query)
-                limit = int(params.get("limit", ["100"])[0])
-                self._send_json(HTTPStatus.OK, self.service.read_memory_links(limit=limit))
-                return
-            if path == "/api/memory/evidence":
-                params = self._query_params(parsed.query)
-                limit = int(params.get("limit", ["100"])[0])
-                memory_id = params.get("memory_id", [""])[0] or None
-                status = params.get("status", [""])[0] or None
-                self._send_json(
-                    HTTPStatus.OK,
-                    self.service.read_memory_evidence(limit=limit, memory_id=memory_id, status=status),
-                )
-                return
-            if path == "/api/jobs":
-                params = self._query_params(parsed.query)
-                limit = int(params.get("limit", ["50"])[0])
-                status = params.get("status", [""])[0] or None
-                self._send_json(HTTPStatus.OK, self.service.read_jobs(limit=limit, status=status))
-                return
-            if path == "/api/export":
-                self._send_json(HTTPStatus.OK, self.service.export_data())
-                return
             if path == "/api/reminders":
                 params = self._query_params(parsed.query)
-                limit = int(params.get("limit", ["100"])[0])
+                limit = self._query_limit(params, default=100, maximum=100)
                 status = params.get("status", [""])[0] or None
                 self._send_json(HTTPStatus.OK, self.service.read_reminders(status=status, limit=limit))
                 return
             if path == "/api/calendar-events":
                 params = self._query_params(parsed.query)
-                limit = int(params.get("limit", ["100"])[0])
+                limit = self._query_limit(params, default=100, maximum=100)
                 self._send_json(HTTPStatus.OK, self.service.read_calendar_events(limit=limit))
                 return
             if path == "/api/settings/notifications":
@@ -119,25 +113,25 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
                     HTTPStatus.OK,
                     self.service.timeline(
                         from_date=params.get("from", [""])[0], to_date=params.get("to", [""])[0],
-                        kind=params.get("kind", [""])[0], limit=int(params.get("limit", ["200"])[0]),
+                        kind=params.get("kind", [""])[0], limit=self._query_limit(params, default=200, maximum=500),
                     ),
                 )
                 return
             if path == "/api/tasks":
                 params = self._query_params(parsed.query)
-                self._send_json(HTTPStatus.OK, self.service.read_tasks(status=params.get("status", [""])[0] or None, limit=int(params.get("limit", ["100"])[0])))
+                self._send_json(HTTPStatus.OK, self.service.read_tasks(status=params.get("status", [""])[0] or None, limit=self._query_limit(params, default=100, maximum=100)))
                 return
             if path == "/api/routines":
                 params = self._query_params(parsed.query)
-                self._send_json(HTTPStatus.OK, self.service.read_routines(active_only=params.get("active_only", ["false"])[0].lower() == "true", limit=int(params.get("limit", ["100"])[0])))
+                self._send_json(HTTPStatus.OK, self.service.read_routines(active_only=params.get("active_only", ["false"])[0].lower() == "true", limit=self._query_limit(params, default=100, maximum=100)))
                 return
             if path == "/api/activities":
                 params = self._query_params(parsed.query)
-                self._send_json(HTTPStatus.OK, self.service.read_activities(status=params.get("status", [""])[0] or None, limit=int(params.get("limit", ["100"])[0])))
+                self._send_json(HTTPStatus.OK, self.service.read_activities(status=params.get("status", [""])[0] or None, limit=self._query_limit(params, default=100, maximum=100)))
                 return
             if path == "/api/diary-entries":
                 params = self._query_params(parsed.query)
-                self._send_json(HTTPStatus.OK, self.service.read_diary_entries(date=params.get("date", [""])[0], limit=int(params.get("limit", ["100"])[0])))
+                self._send_json(HTTPStatus.OK, self.service.read_diary_entries(date=params.get("date", [""])[0], limit=self._query_limit(params, default=100, maximum=100)))
                 return
             if path.startswith("/api/tasks/"):
                 task_id, action = self._resource_action(path, "/api/tasks/")
@@ -174,6 +168,13 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path
+        if not self._authorize(path):
+            return
+        if not self._begin_idempotency("POST", path):
+            return
+        if path in INTERNAL_HTTP_ENDPOINTS:
+            self._send_error(HTTPStatus.NOT_FOUND, "not_found", "not found")
+            return
         if path != "/api/chat":
             if path == "/api/tasks":
                 try:
@@ -300,7 +301,8 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
                     self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
                     return
                 except Exception as exc:  # noqa: BLE001 - keep the API from crashing the server.
-                    self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": type(exc).__name__})
+                    LOGGER.exception("proactive tick failed")
+                    self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "internal_error", "暂时无法完成这次请求。", retryable=True)
                     return
                 self._send_json(HTTPStatus.OK, result)
                 return
@@ -386,7 +388,8 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
                 try:
                     result = self.service.tick_worker()
                 except Exception as exc:  # noqa: BLE001 - keep the API from crashing the server.
-                    self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": type(exc).__name__})
+                    LOGGER.exception("worker tick endpoint was called unexpectedly")
+                    self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "internal_error", "暂时无法完成这次请求。", retryable=True)
                     return
                 self._send_json(HTTPStatus.OK, result)
                 return
@@ -395,25 +398,44 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
 
         try:
             payload = self._read_json_body(max_bytes=64 * 1024)
-            message = str(payload.get("message", ""))
+            message = payload.get("message", "")
+            if not isinstance(message, str) or not message.strip() or len(message) > 8_000:
+                raise ValueError("message must be a non-empty string up to 8000 characters")
             history = payload.get("history", [])
             if not isinstance(history, list):
-                history = []
+                raise ValueError("history must be a JSON array")
+            if len(history) > 10:
+                raise ValueError("history must contain at most 10 messages")
+            for item in history:
+                if (
+                    not isinstance(item, dict)
+                    or item.get("role") not in {"user", "assistant"}
+                    or not isinstance(item.get("content"), str)
+                    or not item["content"].strip()
+                    or len(item["content"]) > 8_000
+                ):
+                    raise ValueError("history messages must contain a role and content")
             result = self.service.chat(message, history)
         except ValueError as exc:
             self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
             return
         except ModelClientError as exc:
-            self._send_json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": str(exc)})
+            LOGGER.warning("model request unavailable: %s", exc)
+            self._send_error(HTTPStatus.SERVICE_UNAVAILABLE, "llm_unavailable", "陪伴服务暂时不可用，请稍后重试。", retryable=True)
             return
         except Exception as exc:  # noqa: BLE001 - keep the API from crashing the server.
-            self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": type(exc).__name__})
+            LOGGER.exception("chat request failed")
+            self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "internal_error", "暂时无法完成这次请求。", retryable=True)
             return
 
         self._send_json(HTTPStatus.OK, result)
 
     def do_PATCH(self) -> None:
         path = urlparse(self.path).path
+        if not self._authorize(path):
+            return
+        if not self._begin_idempotency("PATCH", path):
+            return
         try:
             payload = self._read_json_body(max_bytes=32 * 1024)
             if path.startswith("/api/tasks/") and "/steps/" in path:
@@ -459,6 +481,13 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
 
     def do_DELETE(self) -> None:
         path = urlparse(self.path).path
+        if not self._authorize(path):
+            return
+        if not self._begin_idempotency("DELETE", path):
+            return
+        if path.startswith("/api/activities/"):
+            self._send_error(HTTPStatus.NOT_FOUND, "not_found", "activity deletion is not supported")
+            return
         if path.startswith("/api/tasks/"):
             task_id, action = self._resource_action(path, "/api/tasks/")
             if action:
@@ -508,6 +537,70 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: object) -> None:
         print(f"{self.address_string()} - {format % args}", flush=True)
 
+    def _origin_allowed(self) -> bool:
+        origin = self.headers.get("Origin", "").strip()
+        if not origin:
+            return True
+        if self.config.cors_origins:
+            return origin in self.config.cors_origins
+        if self.config.public_deployment:
+            return False
+        return origin.startswith("http://localhost:") or origin.startswith("http://127.0.0.1:")
+
+    def _authorize(self, path: str) -> bool:
+        if not path.startswith("/api/"):
+            return True
+        if not self._origin_allowed():
+            self._send_error(HTTPStatus.FORBIDDEN, "origin_not_allowed", "origin is not allowed")
+            return False
+        if path == "/api/health" or not self.config.public_deployment:
+            return True
+        authorization = self.headers.get("Authorization", "")
+        expected = f"Bearer {self.config.auth_token}"
+        if not self.config.auth_token or not hmac.compare_digest(authorization, expected):
+            self._send_error(HTTPStatus.UNAUTHORIZED, "authentication_required", "authentication required")
+            return False
+        return True
+
+    def _begin_idempotency(self, method: str, path: str) -> bool:
+        key = self.headers.get("Idempotency-Key", "").strip()
+        if not key:
+            return True
+        if len(key) > 128:
+            self._send_error(HTTPStatus.BAD_REQUEST, "invalid_request", "Idempotency-Key is too long")
+            return False
+        record = self.service.runtime.store.reserve_api_idempotency(key, method, path)
+        state = record.get("state")
+        if state == "completed":
+            try:
+                payload = json.loads(str(record.get("response_json", "{}")))
+            except json.JSONDecodeError:
+                self._send_error(HTTPStatus.CONFLICT, "idempotency_conflict", "stored response is unavailable")
+                return False
+            self._send_json(HTTPStatus(int(record["status_code"])), payload)
+            return False
+        if state == "conflict":
+            self._send_error(HTTPStatus.CONFLICT, "idempotency_conflict", "Idempotency-Key was used for another request")
+            return False
+        if state == "in_flight":
+            self._send_error(HTTPStatus.CONFLICT, "request_in_flight", "the same request is already running", retryable=True)
+            return False
+        self._active_idempotency_key = key
+        return True
+
+    def _send_error(
+        self,
+        status: HTTPStatus,
+        code: str,
+        message: str,
+        *,
+        retryable: bool = False,
+    ) -> None:
+        self._send_json(
+            status,
+            {"error": {"code": code, "message": message, "retryable": retryable}},
+        )
+
     def _read_json_body(self, max_bytes: int, optional: bool = False) -> dict[str, object]:
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -556,13 +649,36 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _send_json(self, status: HTTPStatus, payload: dict[str, object]) -> None:
+        status = HTTPStatus(status)
+        if isinstance(payload.get("error"), str):
+            message = str(payload["error"])
+            normalized_status = status
+            lowered = message.lower()
+            if "not found" in lowered:
+                normalized_status = HTTPStatus.NOT_FOUND
+            elif "cannot transition" in lowered or "already" in lowered:
+                normalized_status = HTTPStatus.CONFLICT
+            payload = {
+                "error": {
+                    "code": "not_found" if normalized_status == HTTPStatus.NOT_FOUND else "invalid_request",
+                    "message": message,
+                    "retryable": normalized_status >= HTTPStatus.INTERNAL_SERVER_ERROR,
+                }
+            }
+            status = normalized_status
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self._send_common_headers()
+        if status == HTTPStatus.UNAUTHORIZED:
+            self.send_header("WWW-Authenticate", "Bearer")
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
+        key = getattr(self, "_active_idempotency_key", "")
+        if key:
+            self.service.runtime.store.complete_api_idempotency(key, int(status), data.decode("utf-8"))
+            self._active_idempotency_key = ""
 
     def _send_empty(self, status: HTTPStatus) -> None:
         self.send_response(status)
@@ -571,9 +687,13 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _send_common_headers(self, *, cache_control: str = "no-store") -> None:
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origin = self.headers.get("Origin", "").strip()
+        if origin and self._origin_allowed():
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, Idempotency-Key")
+        self.send_header("Access-Control-Max-Age", "600")
         self.send_header("Cache-Control", cache_control)
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
@@ -581,6 +701,19 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
 
     def _query_params(self, query: str) -> dict[str, list[str]]:
         return parse_qs(query, keep_blank_values=True)
+
+    @staticmethod
+    def _query_limit(params: dict[str, list[str]], *, default: int, maximum: int) -> int:
+        raw = params.get("limit", [""])[0]
+        if not raw:
+            return default
+        try:
+            value = int(raw)
+        except ValueError as exc:
+            raise ValueError("limit must be an integer") from exc
+        if value < 1 or value > maximum:
+            raise ValueError(f"limit must be between 1 and {maximum}")
+        return value
 
     def _resource_action(self, path: str, prefix: str) -> tuple[str, str]:
         suffix = path.removeprefix(prefix).strip("/")
@@ -603,11 +736,12 @@ def make_handler(config: BackendConfig) -> type[CompanionRequestHandler]:
 
 
 def serve(config: BackendConfig, host: str, port: int) -> None:
+    config.validate_server_boundary()
     handler = make_handler(config)
     server = ThreadingHTTPServer((host, port), handler)
     print(
         f"serving companion frontend at http://{host}:{port} "
-        f"(mock={config.mock}, llm_configured={config.llm_configured})",
+        f"(mode={config.deployment_mode}, mock={config.mock})",
         flush=True,
     )
     server.serve_forever()
@@ -615,19 +749,27 @@ def serve(config: BackendConfig, host: str, port: int) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the role-play companion backend and frontend.")
+    parser.add_argument("--project-root", type=Path, default=PROJECT_ROOT)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
-    parser.add_argument("--env", type=Path, default=PROJECT_ROOT / ".env")
+    parser.add_argument("--env", type=Path, default=None)
     parser.add_argument("--frontend", type=Path, default=PROJECT_ROOT / "apps" / "companion-web" / "companion-ui")
     parser.add_argument("--mock", action="store_true", help="Use deterministic local replies instead of calling an LLM.")
+    parser.add_argument("--deployment-mode", choices=("local", "public"), default="", help="Select the local or authenticated public boundary.")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    config = load_backend_config(env_path=args.env, frontend_dir=args.frontend)
+    config = load_backend_config(
+        project_root=args.project_root,
+        env_path=args.env or args.project_root / ".env",
+        frontend_dir=args.frontend,
+    )
     if args.mock:
         config.mock = True
+    if args.deployment_mode:
+        config.deployment_mode = args.deployment_mode
     serve(config, args.host, args.port)
     return 0
 

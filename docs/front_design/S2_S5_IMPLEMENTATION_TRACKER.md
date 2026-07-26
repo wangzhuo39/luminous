@@ -88,21 +88,32 @@
 - [x] 全量安全、性能、可访问性与跨阶段回归：175/175 Node，9/9 Chromium scripts
 - [x] Gemini 初审问题修复并复审 98/100、无 P0/P1/P2，最终架构和交付文档完成
 
+## 产品分层调整：已完成（2026-07-26）
+
+- [x] Today、来信、记忆、隐私保持一级辅助空间，继续从主场景首屏可达。
+- [x] 任务、习惯、活动、日记、提醒、日历全部保留，并下沉到 Today 的“更多生活流”二级入口。
+- [x] Today 默认先展示摘要和 Timeline；二级能力通过显式展开进入，不再默认等权平铺。
+- [x] 入口层级、展开状态、视觉样式和 Chromium 验收脚本已同步更新。
+- [x] 物理目录暂不迁移，先保持现有 feature、adapter、state 边界稳定；后续迁移必须独立批次完成并重新验收。
+
+权威实施映射见 `frontend_product_layering_guidance_v1.md`，交接约束见 `FRONTEND_AGENT_HANDOFF.md`。
+
 ## 当前发现
 
-1. `/api/chat` 后端响应包含普通 UI 不允许消费的 `role_thinking`、`role_action`、memory、ledger、prompt、analysis 和 meta 等字段；S2 adapter 必须默认拒绝。
-2. `/api/state` 返回完整 snapshot；S2 只能读取根部 `state`，并把内部数值映射为有限、非诊断性的 scene presentation。
-3. 当前没有用户安全的历史对话读取接口，S2 只能发送当前会话内成功消息作为 history，刷新后恢复 fixture/空历史。
+1. I1 已将 `/api/chat` 和 `/api/state` 收口为后端公开 DTO；响应不再包含 `role_thinking`、`role_action`、memory、ledger、prompt、analysis、meta 或原始数据库字段。
+2. `/api/state` 仍只提供展示层 `state`；`?include=history` 额外提供 `user`/`assistant` 的安全历史 DTO。
+3. I1 已补 `GET /api/chat/history`，刷新后由 API 模式首屏恢复最近对话；fixture 路径继续独立保留。
 4. S1 浏览器验收脚本禁止所有 API 请求；S2 需要保留 S1 fixture 回归脚本，并新增带受控 mock API 的 S2 脚本。
 5. S2 API 边界测试位于 `tests/frontend/s2-api-boundary.test.mjs`，运行命令为 `node --test tests/frontend/s2-api-boundary.test.mjs`。
 6. S3 B2 已按真实后端固化 `/checkins`、Reminder POST cancel、snooze 明确 `due_at`、Diary `diary_entry`/`entry` 双 wrapper、Activity 无 DELETE、Calendar 无单项 GET 等差异。
 7. S3 API 与 fixture DataSource 均提供 32 个同名方法；fixture 不导入 API client 且在 fetch 抛错环境中完成读写，raw response 只在 adapter 边界内存在。
-8. S1–S3 B8 与晶格温室 v2 全量 Node 回归命令为 `node --test tests/frontend/*.test.mjs`，当前 162/162 通过。
+8. S1–S3 B8 与晶格温室 v2 全量 Node 回归命令为 `node --test tests/frontend/*.test.mjs`，当前 175/175 通过。
 9. B3 使用一个 Today dialog 完成 Today/Timeline 双面板；首次打开懒加载、Timeline 显式加载、fixture 零 API、错误字段白名单、焦点进入/归还和 reduced-motion 已由 `acceptance/today-timeline-s3-b3/` 证明。
 10. B4 已完成 Task/Step 与 Routine/Checkin 的列表、详情、创建、编辑、状态变更、归档/停用确认、失败草稿恢复、重复提交门禁和 Today 回刷；证据位于 `acceptance/tasks-routines-s3-b4/`。
 11. 原视觉只实现冷色模糊，未兑现晶格温室。v1 只作为技术基线；感知完成基线已升级为 `crystal_solarium_v2_implementation_spec.md`，证据位于 `acceptance/crystal-solarium-v2/`。Gemini 复审 86/100、无 P0。B7–S5 不得退回黑色 dialog、水平 Tab Bar、卡片墙或单图背景。
 12. B5 已完成 Activity 列表、创建、planned/active/paused/completed/cancelled 生命周期、terminal/unknown 只读、精确请求、保守写入和主场景 active/paused 事实派生；证据位于 `acceptance/activities-s3-b5/`。Activity 无 DELETE、timer、progress 或伪时长。
 13. B6 已完成 Diary 列表、详情、手动 POST、generated draft→PATCH、编辑、删除确认、错误草稿恢复和长正文/移动键盘；证据位于 `acceptance/diary-s3-b6/`。
+14. I1 后端验收位于 `tests/backend/test_i1_api.py`：公开 DTO、结构化错误、鉴权/CORS、幂等、重启持久化、生活流路由与 Worker 重试均通过；真实模式 Chromium 验收位于 `tests/frontend/i1-real-mode-browser-acceptance.mjs`。
 14. `scene-environment.js` 只接收安全聚合值。S4 前主应用明确使用 `memoryCount=0`、`dnd=false`；不得为了点亮装饰读取 Memory 正文、opaque key 或 raw response。
 15. B7 已完成 Reminder 光尘列表/详情/创建/编辑/精确 snooze/取消终态，以及 Calendar 窗框刻度/定时/全天/编辑/保守删除；证据位于 `acceptance/reminder-calendar-s3-b7/`。Gemini 7 图终审 92/100、无 P0，四项非阻塞 P1 修正后浏览器回归通过。
 16. B8 已完成可注入、生产门控的 Action 光签；五类 proposal 在请求前 allowlist，目标映射失败不发网络请求，confirm 固定使用同一冻结 snapshot，draft diary 进入已持久化 editor。证据位于 `acceptance/action-light-tag-s3-b8/`，Gemini 终审 96/100、无 P0。

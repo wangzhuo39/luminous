@@ -8,14 +8,14 @@
 
 Luminous（栖光）是情感陪伴项目。前端首先表达“有人安静地在场”，生活流操作其次。它不是生产力 Dashboard、CRM、普通聊天列表或任务打卡工具。
 
-持续目标是依据设计理念、架构和 S1 经验逐步完成 S2–S5：
+当前 S1–S5 与晶格温室 v2 已完成。后续工作应在现有产品分层、视觉基线和后端契约之上推进，不重新打开已关闭阶段：
 
 1. 每个复杂阶段先让 Gemini 形成一份或多份详细设计；
 2. 依据设计和当前代码拆成可验证 implementation batches；
 3. Gemini 负责视觉设计、美化方案和多模态视觉复核；
 4. Codex 负责 JS、状态机、接口编排、无状态调用上下文、集成、契约审查、测试、浏览器截图和返工；
 5. 设计或实现发现问题时，随时更新 living architecture；
-6. 持续执行到 S2–S5 完整交付，不把局部测试通过误报为全目标完成。
+6. 新需求必须经过产品层级、后端契约、隐私边界和完整验收审查，不把局部测试通过误报为全目标完成。
 
 有关美观、构图、材质、组件视觉层级的判断交给 Gemini。Codex 不应凭空把页面改成通用卡片墙或后台界面。
 
@@ -26,12 +26,13 @@ Luminous（栖光）是情感陪伴项目。前端首先表达“有人安静地
 1. `docs/front_design/FRONTEND_AGENT_HANDOFF.md`（本文）
 2. `docs/front_design/S2_S5_IMPLEMENTATION_TRACKER.md`
 3. `docs/front_design/luminous_frontend_design_spec_v1.md`
-4. `docs/front_design/frontend_architecture_v1.md`
-5. `docs/front_design/S1_EXECUTION_RETROSPECTIVE_AND_STAGE_PLAYBOOK.md`
-6. 当前阶段的设计与实施文档
-7. `docs/front_design/frontend_api_contract_v1.md`
-8. `docs/front_design/GEMINI_API_OUTPUT_BOUNDARY_AND_BATCHING.md`
-9. `docs/front_design/crystal_solarium_v2_implementation_spec.md`
+4. `docs/front_design/frontend_product_layering_guidance_v1.md`
+5. `docs/front_design/frontend_architecture_v1.md`
+6. `docs/front_design/S1_EXECUTION_RETROSPECTIVE_AND_STAGE_PLAYBOOK.md`
+7. 当前阶段的设计与实施文档
+8. `docs/front_design/frontend_api_contract_v1.md`
+9. `docs/front_design/GEMINI_API_OUTPUT_BOUNDARY_AND_BATCHING.md`
+10. `docs/front_design/crystal_solarium_v2_implementation_spec.md`
 
 S3 当前设计基线：
 
@@ -55,17 +56,17 @@ S3 当前设计基线：
 ├── 对话与输入水面
 ├── Today 入口
 │   └── 唯一 #today-overlay dialog
-│       ├── 今日摘要
-│       ├── Timeline
-│       ├── Task / Step
-│       ├── Routine / Check-in
-│       ├── Activity
-│       ├── Diary
-│       ├── Reminder
-│       └── Calendar
-├── 来信
-├── 记忆
-└── 隐私
+│       ├── 今日摘要 / Timeline（默认概览）
+│       └── 更多生活流（显式展开）
+│           ├── Task / Step
+│           ├── Routine / Check-in
+│           ├── Activity
+│           ├── Diary
+│           ├── Reminder
+│           └── Calendar
+├── 来信（一级辅助空间）
+├── 记忆（一级辅助空间）
+└── 隐私（一级辅助空间）
 
 聊天前景
 └── Action Preview / Confirm 光签
@@ -408,6 +409,16 @@ Gemini traces：
 
 权威文档与证据：`s5_01_productization_scope_and_architecture_v1.md`、`s5_02_install_offline_update_experience_design_v1.md`、`s5_03_implementation_plan_v1.md`、`acceptance/productization-s5-b1/README.md`。
 
+### 6.13 产品分层调整关闭状态
+
+- Today、来信、记忆、隐私保持一级辅助空间，入口继续位于主场景的空间物件层。
+- Today 覆盖层默认只呈现今日摘要和 Timeline；任务、习惯、活动、日记、提醒、日历保留在“更多生活流”中，并通过显式展开进入。
+- `today-view.js` 管理生活流展开状态，`main.js` 只负责绑定对应 DOM hook，未改变既有资源请求和状态机。
+- `life-flow.css` 与 `crystal-solarium.css` 补充分层后的光窗、磨砂玻璃和一级入口视觉权重。
+- 物理目录暂不迁移：先稳定产品语义和后端 adapter/state 边界，再进行可审计的小批量文件归位。
+
+权威指导与实现映射：`frontend_product_layering_guidance_v1.md`。
+
 ## 7. 下一次对话的直接执行顺序
 
 不要重新做 S1–S5 或晶格温室 v2。后续只在出现新产品需求、后端 user-safe DTO、身份/部署契约或真实回归问题时继续：
@@ -435,6 +446,14 @@ pass 175
 fail 0
 ```
 
+浏览器验收使用 Chromium 执行：
+
+```bash
+rtk npm run test:browser
+```
+
+当前全量浏览器场景通过；验收脚本同时覆盖桌面、移动、键盘、reduced-motion、空态、错误态和离线壳。
+
 启动网页与后端：
 
 ```bash
@@ -456,7 +475,7 @@ http://127.0.0.1:8000/?mode=fixture
 
 ## 9. 安全与交互不变量
 
-- 初始启动只加载 `/api/state`；Today 仅首次打开后加载；Timeline 仅显式点击后加载；
+- 初始启动加载 `/api/state?include=history`；Today 仅首次打开后加载；Timeline 仅显式点击后加载；
 - raw response 不进入 View、AppState、DOM、日志或 storage；
 - opaque key 只用于内存寻址，不显示、不进 tooltip、不进错误文本、不写 data-*；
 - 写操作不做假乐观成功；
@@ -490,7 +509,3 @@ git checkout -- .
 ## 11. 后续阶段
 
 S1–S5 已全部完成并关闭。当前没有自动进入的下一阶段；后续工作由新的产品需求或后端契约触发。被延期的系统通知、Push、聊天历史、跨设备同步和公开部署不得仅凭前端本地状态补齐。
-
-## 12. 停止条件
-
-用户要求：如果可见的调用/对话额度只剩 3%，立即停止新增实现，把当时已完成部分、未验证风险和下一步写入本文及 tracker，等待下周继续。若系统不提供可见额度，不要臆测百分比。

@@ -230,6 +230,8 @@ async function mobileAcceptance() {
     fullPage: true,
   });
   await openToday(page);
+  await page.locator('[data-hook="resource-nav-toggle"]').click();
+  await page.locator('[data-hook="resource-nav"]').waitFor({ state: 'visible' });
   await page.getByRole('button', { name: '任务', exact: true }).click();
   await page.getByRole('button', { name: '凝结新任务' }).click();
   await page.locator('[data-hook="task-title"]').focus();

@@ -8,7 +8,7 @@
 
 S1 的实际设计、实现、失败恢复和验收流程记录在 [S1 全流程复盘与后续阶段执行手册](S1_EXECUTION_RETROSPECTIVE_AND_STAGE_PLAYBOOK.md)。后续阶段除遵循本文档的工程边界外，也应复用其中的分轮设计、分批实现、主备重试和分级验收方法。
 
-接口事实以 `frontend_api_contract_v1.md` 为准；产品体验和视觉约束以 `FRONTEND_AGENT_HANDOFF.md`、`frontend_design_guidelines.md` 为准。若文档之间发生冲突，先停止扩展实现，修正文档后再继续联调。
+接口事实以 `frontend_api_contract_v1.md` 为准；产品体验和视觉约束以 `FRONTEND_AGENT_HANDOFF.md`、`frontend_design_guidelines.md` 为准；入口优先级和能力归属以 `frontend_product_layering_guidance_v1.md` 为准。若文档之间发生冲突，先停止扩展实现，修正文档后再继续联调。
 
 ## 1. 架构目标
 
@@ -29,8 +29,8 @@ S1 的实际设计、实现、失败恢复和验收流程记录在 [S1 全流程
 - 当前没有 Node.js 包、前端构建系统或组件框架。
 - 默认采用原生 HTML、CSS、JavaScript 与 ES Modules。
 - 请求使用同源相对路径，不写死 host 或 port。
-- 当前 S1 是纯静态体验原型，禁止调用 `/api/*`；后续联通通过替换 adapter 数据源完成。
-- 页面暂时使用单文档和空间覆盖层，不依赖服务端路由。若未来需要 URL 级路由，必须先补充静态 fallback 或部署路由规则。
+- `?mode=fixture` 保留纯静态体验和无后端回归路径；默认运行模式使用 API adapter，前后端联通通过稳定 ViewModel 边界完成。
+- 页面继续使用单文档和空间覆盖层；产品化 router 只同步 `?space=today|outbox|memory|privacy`，不新增顶层页面或第二个 Today dialog。
 
 ## 3. 总体分层
 
@@ -64,7 +64,7 @@ Luminous HTTP API
 
 ## 4. 建议目录结构
 
-当前目标结构如下。Gemini 可以在不破坏分层原则的前提下调整文件粒度；任何较大调整应同步更新本文档。
+当前目标结构如下。顶层仍按文件类型和运行职责组织，但 `js/features/` 内部按产品能力域归位；产品层级不通过复制页面或强行搬目录实现。Gemini 可以在不破坏分层原则的前提下调整文件粒度；任何较大调整应同步更新本文档。
 
 ```text
 apps/companion-web/companion-ui/
@@ -297,7 +297,7 @@ AppError
   retryable
 ```
 
-启动时只读取 `/api/state`。Today、来信和记忆在对应空间首次打开时懒加载，并可保留当前会话缓存。网络恢复后只刷新当前可见且已加载的数据，不一次性请求全部资源。
+启动时读取 `/api/state?include=history`，只接收公开 `state` 与最近对话 DTO。Today、来信和记忆在对应空间首次打开时懒加载，并可保留当前会话缓存。网络恢复后只刷新当前可见且已加载的数据，不一次性请求全部资源。
 
 聊天后端当前不是流式接口，最长等待可能明显高于普通请求。发送态需要保留草稿副本、提供克制的等待反馈，并避免重复发送。
 
@@ -352,7 +352,7 @@ POST /api/actions/confirm
 
 ## 11. 安全与隐私
 
-前端的“不渲染”不是完整安全边界。当前 `/api/chat` 和 `/api/state` 仍可能在网络响应中包含内部数据，因此：
+前端的“不渲染”不是完整安全边界。I1 已在后端为 `/api/chat`、`/api/state` 和业务资源提供严格公开 DTO；前端仍必须保持 adapter 白名单，因为它负责展示模型转换与未知字段的失效保护：
 
 1. API adapter 必须执行严格白名单转换；
 2. App State、localStorage、sessionStorage、CacheStorage、日志和错误上报不得保存原始响应；sessionStorage 的唯一例外是版本化未发送草稿；
@@ -464,8 +464,8 @@ node --test \
 1. 习惯打卡文档写作 `/api/routines/{routine_id}/checkin`，后端实际使用 `/checkins`。
 2. 日记创建文档描述返回 `entry`，后端当前返回 `diary_entry`。
 3. reminder snooze 文档提到“延后参数”，后端 HTTP 层当前只读取明确的 `due_at`。
-4. `/api/chat` 返回的内部字段超出普通前端所需范围，需要前端白名单和后端安全 DTO 评估。
-5. `/api/state` 返回完整 snapshot，前端只能读取其中的 `state`。
+4. I1 已验证 `/api/chat` 网络响应不包含模型思考、trace、prompt、ledger、jobs 或原始数据库字段。
+5. I1 已验证 `/api/state` 只返回公开 `state`，可选 history 也只包含安全对话字段。
 6. 缺少用户安全的历史对话读取接口，刷新恢复策略未定。
 7. outbox 没有推送或流式更新契约。
 8. 时区、分页、删除响应和部分资源完整 schema 尚未固定。

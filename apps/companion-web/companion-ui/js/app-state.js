@@ -179,6 +179,20 @@ export function completeInitialLoad(scene) {
   return true;
 }
 
+export function hydrateConversationHistory(messages) {
+  if (!state.viewModels?.conversation || !Array.isArray(messages)) return false;
+  state.viewModels.conversation.messages = messages.flatMap((item) => {
+    if (!item || (item.role !== 'user' && item.role !== 'assistant')) return [];
+    const text = typeof item.text === 'string' ? item.text.trim().slice(0, 8_000) : '';
+    return text ? [{
+      id: typeof item.id === 'string' && item.id.trim() ? item.id.trim() : `history-${messageCounter++}`,
+      role: item.role,
+      text,
+    }] : [];
+  }).slice(-10);
+  return true;
+}
+
 export function failInitialLoad(error) {
   if (state.runtimeMode !== 'api') return false;
   const descriptor = safeErrorDescriptor(error);

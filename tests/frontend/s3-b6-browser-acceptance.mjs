@@ -14,6 +14,14 @@ async function openToday(page) {
   await page.locator('#today-overlay[open]').waitFor();
 }
 
+async function expandLifeFlow(page) {
+  const toggle = page.getByRole('button', { name: '展开', exact: true });
+  if (await toggle.isVisible()) {
+    await toggle.click();
+  }
+  await page.locator('[data-hook="resource-nav"]:visible').waitFor();
+}
+
 function errorsFor(page, allowed = () => false) {
   const errors = [];
   page.on('console', (entry) => {
@@ -29,6 +37,7 @@ async function fixtureDesktop() {
   const errors = errorsFor(page);
   await page.goto(`${baseUrl}/?mode=fixture`, { waitUntil: 'domcontentloaded' });
   await openToday(page);
+  await expandLifeFlow(page);
   await page.getByRole('button', { name: '日记', exact: true }).click();
   await page.getByRole('button', { name: /今天的一束光/ }).waitFor();
   assert.equal(await page.locator('[data-hook="today-panel"]').isVisible(), false);
@@ -79,6 +88,7 @@ async function fixtureMobileLongBody() {
   const errors = errorsFor(page);
   await page.goto(`${baseUrl}/?mode=fixture`, { waitUntil: 'domcontentloaded' });
   await openToday(page);
+  await expandLifeFlow(page);
   await page.getByRole('button', { name: '日记', exact: true }).click();
   await page.getByRole('button', { name: '生成今日回顾' }).click();
   await page.locator('[data-hook="diary-form"][data-editor-kind="generated"]').waitFor();
@@ -186,6 +196,7 @@ async function apiGeneratedPatchAndDelete() {
   await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
   await page.locator('body[data-app-status="ready"]:not([data-js-loading])').waitFor();
   await openToday(page);
+  await expandLifeFlow(page);
   await page.getByRole('button', { name: '日记', exact: true }).click();
   await page.getByText('今天的思绪，也可以在这里安放').waitFor();
   await page.getByRole('button', { name: '生成今日回顾' }).click();
@@ -237,6 +248,7 @@ async function apiManualError() {
   await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
   await page.locator('body[data-app-status="ready"]:not([data-js-loading])').waitFor();
   await openToday(page);
+  await expandLifeFlow(page);
   await page.getByRole('button', { name: '日记', exact: true }).click();
   await page.getByRole('button', { name: '写一篇' }).click();
   await page.locator('[data-hook="diary-title"]').fill('  保留标题空白  ');

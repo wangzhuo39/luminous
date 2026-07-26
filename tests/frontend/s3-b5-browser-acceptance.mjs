@@ -18,6 +18,14 @@ async function openToday(page) {
   await page.locator('#today-overlay[open]').waitFor();
 }
 
+async function expandLifeFlow(page) {
+  const toggle = page.getByRole('button', { name: '展开', exact: true });
+  if (await toggle.isVisible()) {
+    await toggle.click();
+  }
+  await page.locator('[data-hook="resource-nav"]:visible').waitFor();
+}
+
 function collectErrors(page, allowed = () => false) {
   const errors = [];
   page.on('console', (entry) => {
@@ -40,6 +48,7 @@ async function fixtureLifecycleDesktop() {
   await page.goto(`${baseUrl}/?mode=fixture`, { waitUntil: 'domcontentloaded' });
   await openToday(page);
   assert.equal(await page.locator('body').getAttribute('data-activity-presence'), 'active');
+  await expandLifeFlow(page);
   await page.getByRole('button', { name: '活动', exact: true }).click();
   await page.locator('[data-hook="activity-list"] .activity-list-entry').waitFor();
   assert.equal(await page.locator('[data-hook="activity-panel"]').isVisible(), true);
@@ -121,6 +130,7 @@ async function fixtureCreateMobileReducedMotion() {
   const errors = collectErrors(page);
   await page.goto(`${baseUrl}/?mode=fixture`, { waitUntil: 'domcontentloaded' });
   await openToday(page);
+  await expandLifeFlow(page);
   await page.getByRole('button', { name: '活动', exact: true }).click();
   await page.getByRole('button', { name: '计划一次活动' }).click();
   await page.waitForFunction(() => (
@@ -204,6 +214,7 @@ async function apiCreateErrorAndExactContract() {
   await page.locator('body[data-app-status="ready"]:not([data-js-loading])').waitFor();
   await openToday(page);
   assert.equal(await page.locator('body').getAttribute('data-activity-presence'), 'none');
+  await expandLifeFlow(page);
   await page.getByRole('button', { name: '活动', exact: true }).click();
   await page.getByText('还没有共同度过的活动').waitFor();
   await page.getByRole('button', { name: '计划一次活动' }).click();

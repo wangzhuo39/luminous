@@ -18,6 +18,11 @@ async function openToday(page) {
   await page.locator('#today-overlay[open]').waitFor();
 }
 
+async function expandLifeFlow(page) {
+  await page.locator('[data-hook="resource-nav-toggle"]').click();
+  await page.locator('[data-hook="resource-nav"]').waitFor({ state: 'visible' });
+}
+
 async function fixtureDesktop() {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const page = await context.newPage();
@@ -26,6 +31,7 @@ async function fixtureDesktop() {
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(`${baseUrl}/?mode=fixture`, { waitUntil: 'domcontentloaded' });
   await openToday(page);
+  await expandLifeFlow(page);
 
   await page.getByRole('button', { name: '任务', exact: true }).click();
   await page.getByText('这里还没有任务').waitFor();
@@ -115,6 +121,7 @@ async function fixtureMobile() {
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(`${baseUrl}/?mode=fixture`, { waitUntil: 'domcontentloaded' });
   await openToday(page);
+  await expandLifeFlow(page);
   await page.getByRole('button', { name: '任务', exact: true }).click();
   await page.getByText('这里还没有任务').waitFor();
   await page.getByRole('button', { name: '凝结新任务' }).click();
@@ -186,6 +193,7 @@ async function apiErrorAndDoubleSubmit() {
   await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
   await page.locator('body[data-app-status="ready"]:not([data-js-loading])').waitFor();
   await openToday(page);
+  await expandLifeFlow(page);
   await page.getByRole('button', { name: '任务', exact: true }).click();
   await page.getByText('这里还没有任务').waitFor();
   await page.getByRole('button', { name: '凝结新任务' }).click();

@@ -49,6 +49,13 @@ export async function requestJson(path, options = {}) {
   }, timeoutMs);
 
   const headers = { Accept: 'application/json' };
+  const apiToken = typeof window !== 'undefined' && typeof window.__LUMINOUS_API_TOKEN__ === 'string'
+    ? window.__LUMINOUS_API_TOKEN__.trim()
+    : '';
+  if (apiToken) headers.Authorization = `Bearer ${apiToken}`;
+  if (options.idempotencyKey) {
+    headers['Idempotency-Key'] = String(options.idempotencyKey).slice(0, 128);
+  }
   const requestOptions = {
     method: options.method ?? 'GET',
     headers,

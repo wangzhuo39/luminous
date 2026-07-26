@@ -14,6 +14,14 @@ async function openToday(page) {
   await page.locator('#today-overlay[open]').waitFor();
 }
 
+async function expandLifeFlow(page) {
+  const toggle = page.getByRole('button', { name: '展开', exact: true });
+  if (await toggle.isVisible()) {
+    await toggle.click();
+  }
+  await page.locator('[data-hook="resource-nav"]:visible').waitFor();
+}
+
 function collectErrors(page) {
   const errors = [];
   page.on('console', (entry) => { if (entry.type() === 'error') errors.push(entry.text()); });
@@ -27,6 +35,7 @@ async function desktopReminderFlow() {
   const errors = collectErrors(page);
   await page.goto(`${baseUrl}/?mode=fixture`, { waitUntil: 'domcontentloaded' });
   await openToday(page);
+  await expandLifeFlow(page);
   await page.getByRole('button', { name: '提醒', exact: true }).click();
   await page.getByRole('button', { name: /给自己留一点时间休息/ }).waitFor();
   await page.screenshot({
@@ -62,6 +71,7 @@ async function desktopCalendarFlow() {
   const errors = collectErrors(page);
   await page.goto(`${baseUrl}/?mode=fixture`, { waitUntil: 'domcontentloaded' });
   await openToday(page);
+  await expandLifeFlow(page);
   await page.getByRole('button', { name: '日历', exact: true }).click();
   await page.getByRole('button', { name: /上午有一次重要的会议提醒/ }).waitFor();
   await page.screenshot({
@@ -106,6 +116,7 @@ async function mobileFormsAndReducedMotion() {
   const errors = collectErrors(page);
   await page.goto(`${baseUrl}/?mode=fixture`, { waitUntil: 'domcontentloaded' });
   await openToday(page);
+  await expandLifeFlow(page);
   await page.getByRole('button', { name: '提醒', exact: true }).click();
   await page.getByRole('button', { name: '留下一粒提醒' }).click();
   await page.locator('[data-hook="reminder-title"]').fill('这是一条很长的提醒标题，用来确认移动端会自然换行而不会从晶格温室的雾面边界溢出');
@@ -121,6 +132,7 @@ async function mobileFormsAndReducedMotion() {
   });
   await page.getByRole('button', { name: '取消' }).click();
   await page.getByRole('button', { name: '← 返回' }).click();
+  await expandLifeFlow(page);
   await page.getByRole('button', { name: '日历', exact: true }).click();
   await page.getByRole('button', { name: '落下一段时间' }).click();
   await page.locator('[data-hook="calendar-title"]').fill('全天休息');

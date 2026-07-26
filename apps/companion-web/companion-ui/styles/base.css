@@ -16,9 +16,18 @@ html, body {
   font-family: var(--font-family-sans);
   /* 锁定全局滚动，仅允许特定区域滚动，保护场景构图 */
   overflow: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   -webkit-tap-highlight-color: transparent;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .sr-only {

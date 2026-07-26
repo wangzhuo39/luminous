@@ -26,10 +26,23 @@ rtk proxy luminous-api --host 127.0.0.1 --port 8000
 rtk proxy luminous-api --host 127.0.0.1 --port 8000 --mock
 ```
 
+这条命令启动真实页面、SQLite 持久化和确定性 mock LLM，默认不需要 `?mode=fixture`。
+Worker 可另开终端执行：
+
+```bash
+rtk proxy luminous-worker --once
+```
+
+本地模式只适用于单用户本机访问。公开部署需要设置
+`LUMINOUS_DEPLOYMENT_MODE=public`、`LUMINOUS_AUTH_TOKEN` 和明确的
+`LUMINOUS_CORS_ORIGINS`；服务端会拒绝无 Bearer token 或未列出的 Origin。
+
 接口：
 
 - `GET /api/health`
-- `POST /api/chat`，请求体为 `{"message": "...", "history": [...]}`，响应只包含 `role_thinking`、`role_action`、`reply`、`presence` 等安全字段。
+- `POST /api/chat`，请求体为 `{"message": "...", "history": [...]}`，响应只包含最终 `reply`、受控 `presence` 和展示层 `state`，不会返回模型思考、trace、prompt、ledger 或原始数据库字段。
+- `GET /api/state?include=history` 用于首屏恢复最近对话，也可用 `GET /api/chat/history?limit=10` 单独读取。
+- 写请求支持 `Idempotency-Key`，重复使用同一 key 会重放首次结果，冲突请求返回结构化 `409`。
 
 ## 主流程
 
