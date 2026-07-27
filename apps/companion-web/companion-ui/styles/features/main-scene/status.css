@@ -1,0 +1,148 @@
+/* Companion status strip */
+.companion-status-panel {
+  position: absolute;
+  top: 75.1%;
+  left: 4.8%;
+  z-index: 31;
+  width: 90.4%;
+  height: 12%;
+  display: block;
+  padding: 1.2% 1.8%;
+  background:
+    linear-gradient(180deg, rgba(34, 67, 112, 0.36), rgba(8, 25, 58, 0.66)),
+    radial-gradient(ellipse at 50% 0, rgba(181, 218, 255, 0.15), transparent 52%);
+  border: 1px solid rgba(215, 230, 255, 0.42);
+  border-radius: clamp(32px, 5.5vw, 56px);
+  box-shadow:
+    inset 0 0 0 4px rgba(96, 149, 222, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.36),
+    0 0 0 2px rgba(70, 120, 196, 0.15),
+    0 18px 50px rgba(0, 4, 18, 0.5),
+    0 0 24px rgba(82, 145, 238, 0.16);
+  backdrop-filter: blur(16px) saturate(118%);
+  -webkit-backdrop-filter: blur(16px) saturate(118%);
+}
+
+.companion-status-panel::before,
+.companion-status-panel::after {
+  display: none;
+}
+
+.companion-status-frame {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: grid;
+  grid-template-columns: 74px 1fr 74px;
+  pointer-events: none;
+}
+
+.status-frame-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  object-fit: fill;
+  filter: drop-shadow(0 0 13px rgba(102, 168, 255, 0.3));
+}
+
+.status-frame-cap {
+  width: 74px;
+  height: 100%;
+  object-fit: fill;
+}
+
+.status-frame-middle {
+  border-block: 1px solid rgba(213, 230, 246, 0.48);
+  background:
+    linear-gradient(180deg, rgba(40, 65, 101, 0.4), rgba(11, 27, 49, 0.58)),
+    radial-gradient(ellipse at 50% 0, rgba(181, 218, 255, 0.12), transparent 58%);
+  box-shadow:
+    inset 0 1px rgba(255, 255, 255, 0.12),
+    inset 0 -1px rgba(125, 181, 232, 0.12),
+    0 18px 44px rgba(0, 5, 18, 0.38);
+  backdrop-filter: blur(18px) saturate(125%);
+  -webkit-backdrop-filter: blur(18px) saturate(125%);
+}
+
+.status-frame-jewel {
+  position: absolute;
+  left: 50%;
+  top: -15px;
+  width: 44px;
+  filter: drop-shadow(0 0 12px rgba(133, 197, 255, 0.72));
+  transform: translateX(-50%);
+}
+
+.companion-status-content {
+  position: relative;
+  z-index: 3;
+  min-height: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+  padding: 1.2% 1.8%;
+  box-sizing: border-box;
+}
+
+.companion-status-item {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(10px, 1.5vw, 20px);
+  color: var(--main-ui-white);
+}
+
+.companion-status-item + .companion-status-item {
+  border-left: 1px solid rgba(198, 222, 255, 0.44);
+}
+
+.status-orb {
+  flex: 0 0 auto;
+  width: clamp(66px, 9.2vw, 94px);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at 36% 28%, rgba(202, 231, 255, 0.38), rgba(45, 101, 190, 0.23) 38%, rgba(7, 24, 63, 0.78) 72%);
+  border: 1px solid rgba(210, 230, 255, 0.56);
+  border-radius: 50%;
+  box-shadow: inset 0 0 24px rgba(100, 162, 255, 0.22), 0 0 18px rgba(72, 135, 240, 0.36);
+}
+
+.status-orb img {
+  width: 54%;
+  height: 54%;
+  filter: drop-shadow(0 0 5px rgba(91, 155, 255, 0.8));
+}
+
+.status-copy {
+  min-width: 0;
+  display: grid;
+  gap: 9px;
+  font-family: var(--main-ui-serif);
+}
+
+.status-copy strong {
+  overflow: hidden;
+  font-size: clamp(18px, 2.5vw, 27px);
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.status-copy small {
+  overflow: hidden;
+  color: rgba(204, 216, 236, 0.68);
+  font-family: var(--main-ui-sans);
+  font-size: clamp(14px, 1.9vw, 20px);
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

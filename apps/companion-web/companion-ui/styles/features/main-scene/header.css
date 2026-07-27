@@ -1,0 +1,118 @@
+/* Header */
+.top-scene-header {
+  position: absolute;
+  top: max(2.7%, env(safe-area-inset-top));
+  right: 3.4%;
+  left: 3.2%;
+  z-index: 30;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  color: var(--main-ui-white);
+  font-family: var(--main-ui-serif);
+  text-shadow: 0 3px 18px rgba(0, 4, 14, 0.95), 0 0 2px rgba(210, 230, 255, 0.25);
+  pointer-events: none;
+}
+
+.scene-clock-block,
+.companion-identity {
+  pointer-events: auto;
+}
+
+.scene-clock-line,
+.companion-identity,
+.companion-presence {
+  display: flex;
+  align-items: center;
+}
+
+.scene-clock-line {
+  gap: clamp(12px, 1.7vw, 20px);
+}
+
+.scene-clock {
+  font-size: clamp(36px, 5.8vw, 58px);
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0.07em;
+}
+
+.scene-crescent {
+  position: relative;
+  width: clamp(28px, 3.7vw, 38px);
+  aspect-ratio: 1;
+  border: 2px solid rgba(239, 245, 255, 0.9);
+  border-radius: 50%;
+  filter: drop-shadow(0 0 8px rgba(167, 201, 255, 0.35));
+}
+
+.scene-crescent::after {
+  position: absolute;
+  inset: -4px -2px 7px 8px;
+  content: "";
+  background: #07101f;
+  border-radius: 50%;
+}
+
+.scene-period {
+  font-size: clamp(20px, 2.8vw, 29px);
+  letter-spacing: 0.09em;
+}
+
+.scene-weather {
+  margin-top: clamp(14px, 1.7vh, 24px);
+  font-size: clamp(18px, 2.5vw, 26px);
+  line-height: 1.4;
+  letter-spacing: 0.04em;
+}
+
+.companion-identity {
+  gap: clamp(18px, 2vw, 26px);
+  text-align: left;
+}
+
+.companion-name {
+  font-size: clamp(34px, 4.4vw, 45px);
+  line-height: 1.05;
+  letter-spacing: 0.12em;
+}
+
+.companion-presence {
+  gap: 10px;
+  margin-top: 12px;
+  font-size: clamp(18px, 2.3vw, 24px);
+  letter-spacing: 0.08em;
+}
+
+.companion-presence > span {
+  width: 16px;
+  height: 16px;
+  background: radial-gradient(circle at 35% 30%, #d7f0ff 0 18%, #6aabff 48%, #1d4fa8 100%);
+  border: 1px solid rgba(225, 241, 255, 0.85);
+  border-radius: 50%;
+  box-shadow: 0 0 12px rgba(90, 155, 255, 0.62);
+}
+
+.scene-more {
+  width: clamp(50px, 6.2vw, 64px);
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: linear-gradient(145deg, rgba(42, 57, 82, 0.52), rgba(5, 13, 30, 0.5));
+  border: 1px solid rgba(220, 234, 255, 0.46);
+  border-radius: 50%;
+  box-shadow: inset 0 0 22px rgba(120, 164, 230, 0.1), 0 7px 26px rgba(0, 3, 12, 0.46);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.scene-more > span {
+  width: 5px;
+  height: 5px;
+  background: rgba(246, 249, 255, 0.94);
+  border-radius: 50%;
+  box-shadow: 0 0 6px rgba(204, 224, 255, 0.6);
+}
+

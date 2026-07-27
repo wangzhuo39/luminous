@@ -36,223 +36,13 @@ import {
 } from './features/productization/draft-recovery.js';
 import { initPwaExperience } from './features/productization/pwa-controller.js';
 import { initSpaceRouter } from './features/productization/space-router.js';
+import { mountMainSceneShell } from './features/main-scene/main-scene-shell.js';
+import { createMainSceneView } from './features/main-scene/main-scene-view.js';
+import { createDomRegistry } from './dom-registry.js';
 
-const dom = {
-  body: document.body,
-  scene: document.querySelector('#luminous-scene'),
-  memoryCrystalField: document.querySelector('[data-hook="memory-crystal-field"]'),
-  companionFigure: document.querySelector('[data-hook="companion-figure"]'),
-  dialogueStream: document.querySelector('[data-hook="dialogue-stream"]'),
-  inputForm: document.querySelector('[data-hook="input-form"]'),
-  chatInput: document.querySelector('[data-hook="chat-input"]'),
-  draftNotice: document.querySelector('[data-hook="draft-notice"]'),
-  sendButton: document.querySelector('[data-hook="send-button"]'),
-  statusNode: document.querySelector('[data-hook="a11y-status"]'),
-  chatFeedback: document.querySelector('[data-hook="chat-feedback"]'),
-  action: {
-    card: document.querySelector('[data-hook="action-card"]'),
-    eyebrow: document.querySelector('[data-hook="action-eyebrow"]'),
-    title: document.querySelector('[data-hook="action-title"]'),
-    summary: document.querySelector('[data-hook="action-summary"]'),
-    status: document.querySelector('[data-hook="action-status"]'),
-    actions: document.querySelector('[data-hook="action-actions"]'),
-  },
-  portals: {
-    today: document.querySelector('#today-portal'),
-    outbox: document.querySelector('#outbox-portal'),
-    memory: document.querySelector('#memory-portal'),
-    privacy: document.querySelector('#privacy-portal'),
-  },
-  dialogs: {
-    today: document.querySelector('#today-overlay'),
-    outbox: document.querySelector('#outbox-overlay'),
-    memory: document.querySelector('#memory-overlay'),
-    privacy: document.querySelector('#privacy-overlay'),
-  },
-  today: {
-    dialog: document.querySelector('#today-overlay'),
-    portal: document.querySelector('#today-portal'),
-    date: document.querySelector('[data-hook="today-date"]'),
-    refresh: document.querySelector('[data-hook="today-refresh"]'),
-    status: document.querySelector('[data-hook="today-status"]'),
-    todayPanel: document.querySelector('[data-hook="today-panel"]'),
-    todayState: document.querySelector('[data-hook="today-local-state"]'),
-    todayRetry: document.querySelector('[data-hook="today-retry"]'),
-    clusters: document.querySelector('[data-hook="today-clusters"]'),
-    resourceNavToggle: document.querySelector('[data-hook="resource-nav-toggle"]'),
-    resourceNav: document.querySelector('[data-hook="resource-nav"]'),
-    timelineReveal: document.querySelector('[data-hook="timeline-reveal"]'),
-    timelinePanel: document.querySelector('[data-hook="timeline-panel"]'),
-    timelineBack: document.querySelector('[data-hook="timeline-back"]'),
-    timelineState: document.querySelector('[data-hook="timeline-local-state"]'),
-    timelineList: document.querySelector('[data-hook="timeline-list"]'),
-    timelineRetry: document.querySelector('[data-hook="timeline-retry"]'),
-    scrollArea: document.querySelector('.today-scroll-area'),
-    tasksOpen: document.querySelector('[data-hook="tasks-open"]'),
-    routinesOpen: document.querySelector('[data-hook="routines-open"]'),
-    activitiesOpen: document.querySelector('[data-hook="activities-open"]'),
-    diariesOpen: document.querySelector('[data-hook="diaries-open"]'),
-    remindersOpen: document.querySelector('[data-hook="reminders-open"]'),
-    calendarOpen: document.querySelector('[data-hook="calendar-open"]'),
-    activity: {
-      panel: document.querySelector('[data-hook="activity-panel"]'),
-      back: document.querySelector('[data-hook="activity-back"]'),
-      list: document.querySelector('[data-hook="activity-list"]'),
-      listState: document.querySelector('[data-hook="activity-list-state"]'),
-      create: document.querySelector('[data-hook="activity-create"]'),
-      detail: document.querySelector('[data-hook="activity-detail"]'),
-      crystal: document.querySelector('[data-hook="activity-crystal"]'),
-      statusActions: document.querySelector('[data-hook="activity-status-actions"]'),
-      form: document.querySelector('[data-hook="activity-form"]'),
-      title: document.querySelector('[data-hook="activity-title"]'),
-      kind: document.querySelector('[data-hook="activity-kind"]'),
-      submit: document.querySelector('[data-hook="activity-submit"]'),
-      cancelEdit: document.querySelector('[data-hook="activity-cancel-edit"]'),
-      error: document.querySelector('[data-hook="activity-error"]'),
-    },
-    diary: {
-      panel: document.querySelector('[data-hook="diary-panel"]'),
-      back: document.querySelector('[data-hook="diary-back"]'),
-      listState: document.querySelector('[data-hook="diary-list-state"]'),
-      list: document.querySelector('[data-hook="diary-list"]'),
-      create: document.querySelector('[data-hook="diary-create"]'),
-      generate: document.querySelector('[data-hook="diary-generate"]'),
-      detail: document.querySelector('[data-hook="diary-detail"]'),
-      edit: document.querySelector('[data-hook="diary-edit"]'),
-      remove: document.querySelector('[data-hook="diary-remove"]'),
-      confirmation: document.querySelector('[data-hook="diary-confirmation"]'),
-      form: document.querySelector('[data-hook="diary-form"]'),
-      formHeading: document.querySelector('[data-hook="diary-form-heading"]'),
-      formCaption: document.querySelector('[data-hook="diary-form-caption"]'),
-      title: document.querySelector('[data-hook="diary-title"]'),
-      body: document.querySelector('[data-hook="diary-body"]'),
-      submit: document.querySelector('[data-hook="diary-submit"]'),
-      cancelEdit: document.querySelector('[data-hook="diary-cancel-edit"]'),
-      error: document.querySelector('[data-hook="diary-error"]'),
-    },
-    reminder: {
-      panel: document.querySelector('[data-hook="reminder-panel"]'),
-      back: document.querySelector('[data-hook="reminder-back"]'),
-      listState: document.querySelector('[data-hook="reminder-list-state"]'),
-      activeList: document.querySelector('[data-hook="reminder-active-list"]'),
-      terminalRegion: document.querySelector('[data-hook="reminder-terminal-region"]'),
-      terminalToggle: document.querySelector('[data-hook="reminder-terminal-toggle"]'),
-      terminalList: document.querySelector('[data-hook="reminder-terminal-list"]'),
-      create: document.querySelector('[data-hook="reminder-create"]'),
-      detail: document.querySelector('[data-hook="reminder-detail"]'),
-      detailActions: document.querySelector('[data-hook="reminder-detail-actions"]'),
-      snoozeForm: document.querySelector('[data-hook="reminder-snooze-form"]'),
-      snoozeAt: document.querySelector('[data-hook="reminder-snooze-at"]'),
-      snoozeSubmit: document.querySelector('[data-hook="reminder-snooze-submit"]'),
-      snoozeDismiss: document.querySelector('[data-hook="reminder-snooze-dismiss"]'),
-      confirmation: document.querySelector('[data-hook="reminder-confirmation"]'),
-      form: document.querySelector('[data-hook="reminder-form"]'),
-      formHeading: document.querySelector('[data-hook="reminder-form-heading"]'),
-      title: document.querySelector('[data-hook="reminder-title"]'),
-      description: document.querySelector('[data-hook="reminder-description"]'),
-      dueAt: document.querySelector('[data-hook="reminder-due-at"]'),
-      recurrence: document.querySelector('[data-hook="reminder-recurrence"]'),
-      submit: document.querySelector('[data-hook="reminder-submit"]'),
-      cancelEdit: document.querySelector('[data-hook="reminder-cancel-edit"]'),
-      error: document.querySelector('[data-hook="reminder-error"]'),
-    },
-    calendar: {
-      panel: document.querySelector('[data-hook="calendar-panel"]'),
-      back: document.querySelector('[data-hook="calendar-back"]'),
-      listState: document.querySelector('[data-hook="calendar-list-state"]'),
-      scale: document.querySelector('[data-hook="calendar-scale"]'),
-      create: document.querySelector('[data-hook="calendar-create"]'),
-      detail: document.querySelector('[data-hook="calendar-detail"]'),
-      detailActions: document.querySelector('[data-hook="calendar-detail-actions"]'),
-      confirmation: document.querySelector('[data-hook="calendar-confirmation"]'),
-      form: document.querySelector('[data-hook="calendar-form"]'),
-      formHeading: document.querySelector('[data-hook="calendar-form-heading"]'),
-      title: document.querySelector('[data-hook="calendar-title"]'),
-      allDay: document.querySelector('[data-hook="calendar-all-day"]'),
-      timedFields: document.querySelector('[data-hook="calendar-timed-fields"]'),
-      startsAt: document.querySelector('[data-hook="calendar-starts-at"]'),
-      endsAt: document.querySelector('[data-hook="calendar-ends-at"]'),
-      dateFields: document.querySelector('[data-hook="calendar-date-fields"]'),
-      startDate: document.querySelector('[data-hook="calendar-start-date"]'),
-      endDate: document.querySelector('[data-hook="calendar-end-date"]'),
-      submit: document.querySelector('[data-hook="calendar-submit"]'),
-      cancelEdit: document.querySelector('[data-hook="calendar-cancel-edit"]'),
-      error: document.querySelector('[data-hook="calendar-error"]'),
-    },
-    task: {
-      panel: document.querySelector('[data-hook="task-panel"]'),
-      back: document.querySelector('[data-hook="task-back"]'),
-      list: document.querySelector('[data-hook="task-list"]'),
-      listState: document.querySelector('[data-hook="task-list-state"]'),
-      create: document.querySelector('[data-hook="task-create"]'),
-      form: document.querySelector('[data-hook="task-form"]'),
-      title: document.querySelector('[data-hook="task-title"]'),
-      description: document.querySelector('[data-hook="task-description"]'),
-      dueAt: document.querySelector('[data-hook="task-due-at"]'),
-      priority: document.querySelector('[data-hook="task-priority"]'),
-      submit: document.querySelector('[data-hook="task-submit"]'),
-      cancelEdit: document.querySelector('[data-hook="task-cancel-edit"]'),
-      detail: document.querySelector('[data-hook="task-detail"]'),
-      stepList: document.querySelector('[data-hook="task-step-list"]'),
-      stepForm: document.querySelector('[data-hook="task-step-form"]'),
-      stepTitle: document.querySelector('[data-hook="task-step-title"]'),
-      statusActions: document.querySelector('[data-hook="task-status-actions"]'),
-      archive: document.querySelector('[data-hook="task-archive"]'),
-      confirmation: document.querySelector('[data-hook="task-confirmation"]'),
-      error: document.querySelector('[data-hook="task-error"]'),
-    },
-    routine: {
-      panel: document.querySelector('[data-hook="routine-panel"]'),
-      back: document.querySelector('[data-hook="routine-back"]'),
-      list: document.querySelector('[data-hook="routine-list"]'),
-      listState: document.querySelector('[data-hook="routine-list-state"]'),
-      create: document.querySelector('[data-hook="routine-create"]'),
-      form: document.querySelector('[data-hook="routine-form"]'),
-      title: document.querySelector('[data-hook="routine-title"]'),
-      schedule: document.querySelector('[data-hook="routine-schedule"]'),
-      reminderPolicy: document.querySelector('[data-hook="routine-reminder-policy"]'),
-      submit: document.querySelector('[data-hook="routine-submit"]'),
-      cancelEdit: document.querySelector('[data-hook="routine-cancel-edit"]'),
-      detail: document.querySelector('[data-hook="routine-detail"]'),
-      checkin: document.querySelector('[data-hook="routine-checkin"]'),
-      deactivate: document.querySelector('[data-hook="routine-deactivate"]'),
-      confirmation: document.querySelector('[data-hook="routine-confirmation"]'),
-      error: document.querySelector('[data-hook="routine-error"]'),
-    },
-  },
-  outbox: {
-    portal: document.querySelector('[data-hook="outbox-portal"]'),
-    unreadCount: document.querySelector('[data-hook="outbox-unread-count"]'),
-    list: document.querySelector('[data-hook="outbox-arrivals"]'),
-    status: document.querySelector('[data-hook="outbox-status"]'),
-    retry: document.querySelector('[data-hook="outbox-retry"]'),
-  },
-  memory: {
-    form: document.querySelector('[data-hook="memory-search-form"]'),
-    input: document.querySelector('[data-hook="memory-search-input"]'),
-    list: document.querySelector('[data-hook="memory-hits"]'),
-    status: document.querySelector('[data-hook="memory-status"]'),
-    retry: document.querySelector('[data-hook="memory-retry"]'),
-  },
-  privacy: {
-    form: document.querySelector('[data-hook="privacy-form"]'),
-    status: document.querySelector('[data-hook="privacy-status"]'),
-    retry: document.querySelector('[data-hook="privacy-retry"]'),
-    dnd: document.querySelector('[data-hook="privacy-dnd-status"]'),
-    enabled: document.querySelector('[data-hook="privacy-enabled"]'),
-    limit: document.querySelector('[data-hook="privacy-limit"]'),
-    quietStart: document.querySelector('[data-hook="privacy-quiet-start"]'),
-    quietEnd: document.querySelector('[data-hook="privacy-quiet-end"]'),
-    save: document.querySelector('[data-hook="privacy-save"]'),
-  },
-  productization: {
-    body: document.body,
-    installSection: document.querySelector('[data-hook="install-section"]'),
-    installButton: document.querySelector('[data-hook="install-button"]'),
-    updateButton: document.querySelector('[data-hook="update-trigger"]'),
-    updateText: document.querySelector('[data-hook="update-text"]'),
-  },
-};
+mountMainSceneShell(document.querySelector('#luminous-scene'));
+
+const dom = createDomRegistry(document);
 
 let renderOverlays = () => {};
 let renderLifeFlow = () => {};
@@ -262,6 +52,7 @@ let renderProductization = () => {};
 let silentSpacesSummary = () => ({ memoryCount: 0, outboxUnread: false, dnd: false });
 let sceneEnvironment = { update() {}, destroy() {} };
 let sceneParallax = { setSuspended() {}, destroy() {} };
+const mainSceneView = createMainSceneView(dom);
 
 function isResourceLifeFlowView(view) {
   return typeof view === 'string' && (
@@ -285,36 +76,6 @@ function renderActivityPresence(lifeFlowState) {
     ? 'paused'
     : hasKnownActive || hasTodayActive ? 'active' : 'none';
   return dom.body.dataset.activityPresence;
-}
-
-function renderScene(viewModel) {
-  if (dom.companionFigure) {
-    dom.companionFigure.setAttribute('aria-label', viewModel.caption);
-  }
-  dom.body.dataset.tone = viewModel.tone;
-}
-
-function renderConversation(viewModel, draft) {
-  if (dom.dialogueStream) {
-    const wasAtBottom = dom.dialogueStream.scrollHeight - dom.dialogueStream.clientHeight
-      - dom.dialogueStream.scrollTop <= 24;
-    const fragment = document.createDocumentFragment();
-    viewModel.messages.forEach((message) => {
-      const messageElement = document.createElement('div');
-      messageElement.className = `message ${message.role}-message`;
-      const paragraph = document.createElement('p');
-      paragraph.textContent = message.text;
-      messageElement.appendChild(paragraph);
-      fragment.appendChild(messageElement);
-    });
-    dom.dialogueStream.replaceChildren(fragment);
-    if (wasAtBottom) {
-      dom.dialogueStream.scrollTop = dom.dialogueStream.scrollHeight;
-    }
-  }
-  if (dom.chatInput && dom.chatInput.value !== draft) {
-    dom.chatInput.value = draft;
-  }
 }
 
 function renderOutbox(viewModel) {
@@ -378,7 +139,7 @@ function renderRuntime(current) {
   dom.chatInput.readOnly = isSubmitting;
   dom.chatInput.placeholder = appStatus === 'offline' || networkOffline
     ? '当前没有风，信笺暂时无法寄出...'
-    : '触碰水面...';
+    : '触碰水面，和她说句话……';
   if (dom.dialogueStream) {
     dom.dialogueStream.hidden = networkOffline;
     dom.dialogueStream.setAttribute('aria-hidden', String(networkOffline));
@@ -395,8 +156,8 @@ function render() {
   if (!current.viewModels) {
     return;
   }
-  renderScene(current.viewModels.scene);
-  renderConversation(current.viewModels.conversation, current.conversation.draft);
+  mainSceneView.renderScene(current.viewModels.scene);
+  mainSceneView.renderConversation(current.viewModels.conversation, current.conversation.draft);
   renderLifeFlow(current.lifeFlow);
   renderAction();
   renderSilentSpaces();

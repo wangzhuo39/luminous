@@ -1,0 +1,17 @@
+@media (prefers-reduced-motion: reduce) {
+  .portal-btn,
+  #send-button,
+  .input-wrapper::before,
+  .scene-more {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+body[data-reduced-motion="true"] .portal-btn,
+body[data-reduced-motion="true"] #send-button,
+body[data-reduced-motion="true"] .input-wrapper::before,
+body[data-reduced-motion="true"] .scene-more {
+  transition: none !important;
+  animation: none !important;
+}

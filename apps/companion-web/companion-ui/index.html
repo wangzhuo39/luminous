@@ -23,6 +23,7 @@
   <link rel="stylesheet" href="styles/silent-spaces.css">
   <link rel="stylesheet" href="styles/productization.css">
   <link rel="stylesheet" href="styles/layout-rebase.css">
+  <link rel="stylesheet" href="styles/main-scene.css">
 </head>
 <body data-js-loading="true">
   <main id="luminous-scene" class="scene-container">
@@ -110,27 +111,25 @@
     <nav id="portals-layer" class="portals-container" aria-label="空间功能入口">
       <button id="today-portal" class="portal-btn portal-object portal-top-left" aria-label="打开今日摘要" aria-expanded="false" data-space="today" data-tier="primary">
         <span class="portal-object__shape portal-time-shard" aria-hidden="true">
-          <span class="portal-time-shard__ticks"></span>
+          <img class="portal-entry-icon" src="assets/icons/today.svg" alt="">
         </span>
         <span class="portal-object__label">今日</span>
       </button>
       <button id="memory-portal" class="portal-btn portal-object portal-mid-left" aria-label="探索记忆" aria-expanded="false" data-space="memory" data-tier="primary">
         <span class="portal-object__shape portal-memory-crystal" aria-hidden="true">
-          <svg viewBox="0 0 80 96" focusable="false">
-            <path d="M39 3 74 28 66 74 41 93 8 70 4 25Z"></path>
-            <path d="m39 3 2 90M4 25l37 19 33-16M8 70l33-26 25 30"></path>
-          </svg>
+          <img class="portal-entry-icon" src="assets/icons/memory.svg" alt="">
         </span>
         <span class="portal-object__label">记忆</span>
       </button>
       <button id="privacy-portal" class="portal-btn portal-object portal-top-right" aria-label="打开隐私与设置" aria-expanded="false" data-space="privacy" data-tier="primary">
-        <span class="portal-object__shape portal-frost-pull" aria-hidden="true"></span>
-        <span class="portal-object__label">隐私</span>
+        <span class="portal-object__shape portal-frost-pull" aria-hidden="true">
+          <img class="portal-entry-icon" src="assets/icons/heart-trace.svg" alt="">
+        </span>
+        <span class="portal-object__label">心迹</span>
       </button>
       <button id="outbox-portal" class="portal-btn portal-object portal-bottom-right" aria-label="查看来信" aria-expanded="false" data-hook="outbox-portal" data-space="outbox" data-tier="primary">
         <span class="portal-object__shape portal-letter" aria-hidden="true">
-          <span class="portal-letter__fold"></span>
-          <span class="portal-object__core"></span>
+          <img class="portal-entry-icon" src="assets/icons/letter.svg" alt="">
         </span>
         <span class="portal-object__label">来信</span>
         <span class="portal-unread-badge sr-only" data-hook="outbox-unread-count"></span>
@@ -139,15 +138,14 @@
 
     <form id="input-surface" class="input-surface-container" data-hook="input-form" data-chat-status="idle">
       <div class="input-wrapper">
+        <img class="input-frame-art" src="assets/generated/input-frame-glass.png" alt="" aria-hidden="true">
         <p id="draft-notice" class="draft-whisper" data-hook="draft-notice" aria-live="polite" hidden>昨夜的落笔还在。</p>
-        <textarea id="chat-input" rows="1" maxlength="8000" placeholder="触碰水面..." aria-label="与栖光对话" aria-describedby="draft-notice chat-feedback" data-hook="chat-input"></textarea>
+        <textarea id="chat-input" rows="1" maxlength="8000" placeholder="触碰水面，和她说句话……" aria-label="与栖光对话" aria-describedby="draft-notice chat-feedback" data-hook="chat-input"></textarea>
         <div id="chat-feedback" class="chat-feedback" data-hook="chat-feedback"></div>
       </div>
       <button type="submit" id="send-button" aria-label="发送" data-hook="send-button" disabled>
         <span class="icon-container icon-send" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="24" height="24">
-            <path d="M4 12l1.41 1.41L11 7.83V20h2V7.83l5.58 5.59L20 12l-8-8-8 8z" fill="currentColor"/>
-          </svg>
+          <img src="assets/generated/send-button-crystal.png" alt="">
         </span>
         <span class="icon-container icon-wait" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="24" height="24">

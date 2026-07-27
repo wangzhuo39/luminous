@@ -1,0 +1,186 @@
+/* Composer */
+.input-surface-container {
+  position: absolute;
+  right: auto;
+  bottom: max(3.2%, env(safe-area-inset-bottom));
+  left: 4.8%;
+  z-index: 34;
+  width: 90.4%;
+  max-width: none;
+  height: 6.2%;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: clamp(12px, 1.8vw, 20px);
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  transform: none;
+}
+
+.input-surface-container::before {
+  top: auto;
+  right: 3%;
+  bottom: -24%;
+  left: 3%;
+  height: 50%;
+  background: radial-gradient(ellipse, rgba(94, 158, 255, 0.36), transparent 68%);
+  filter: blur(12px);
+}
+
+.input-wrapper {
+  position: relative;
+  flex: 1 1 auto;
+  width: auto;
+  height: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  background:
+    linear-gradient(180deg, rgba(43, 78, 127, 0.5), rgba(7, 24, 58, 0.7)),
+    radial-gradient(ellipse at 48% 0, rgba(184, 219, 255, 0.12), transparent 58%);
+  border: 1px solid rgba(211, 228, 255, 0.72);
+  border-radius: 999px;
+  box-shadow:
+    inset 0 0 0 4px rgba(83, 137, 218, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32),
+    0 0 0 2px rgba(71, 125, 211, 0.14),
+    0 15px 38px rgba(0, 4, 18, 0.5),
+    0 0 16px rgba(100, 200, 255, 0.22);
+  backdrop-filter: blur(18px) saturate(120%);
+  -webkit-backdrop-filter: blur(18px) saturate(120%);
+}
+
+.input-frame-art {
+  position: absolute;
+  inset: -4%;
+  z-index: 1;
+  width: 108%;
+  height: 108%;
+  object-fit: fill;
+  pointer-events: none;
+  filter: drop-shadow(0 0 10px rgba(94, 160, 255, 0.28));
+}
+
+.input-wrapper::before {
+  position: absolute;
+  inset: -1px;
+  z-index: 3;
+  padding: 1px;
+  content: "";
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(110deg, transparent 20%, rgba(181, 221, 255, 0.88) 48%, transparent 72%);
+  background-size: 220% 100%;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  opacity: 0.34;
+}
+
+.input-wrapper:focus-within::before {
+  opacity: 1;
+  animation: border-flow 3s linear infinite;
+}
+
+#chat-input {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  padding: clamp(12px, 3vw, 32px) clamp(28px, 4vw, 42px) clamp(12px, 3vw, 32px) clamp(86px, 11vw, 112px);
+  box-sizing: border-box;
+  color: rgba(237, 244, 255, 0.92);
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  box-shadow: none;
+  font-family: var(--main-ui-serif);
+  font-size: clamp(18px, 2.45vw, 26px);
+  line-height: 1.5;
+  resize: none;
+}
+
+#chat-input::placeholder {
+  color: rgba(196, 211, 234, 0.48);
+  opacity: 1;
+  letter-spacing: 0.05em;
+}
+
+#chat-input:focus {
+  background: rgba(76, 126, 201, 0.06);
+  box-shadow: inset 0 0 28px rgba(87, 149, 239, 0.09);
+  outline: none;
+}
+
+#send-button {
+  flex: 0 0 auto;
+  width: clamp(94px, 12.5vw, 120px);
+  height: clamp(94px, 12.5vw, 120px);
+  display: grid;
+  place-items: center;
+  color: rgba(224, 239, 255, 0.98);
+  background:
+    radial-gradient(circle at 36% 26%, rgba(238, 250, 255, 0.72), rgba(70, 151, 255, 0.56) 36%, rgba(7, 40, 110, 0.92) 72%);
+  border: 2px solid rgba(218, 239, 255, 0.96);
+  border-radius: 50%;
+  box-shadow:
+    inset 0 0 0 5px rgba(100, 158, 239, 0.12),
+    inset 0 0 28px rgba(109, 176, 255, 0.28),
+    0 0 0 3px rgba(71, 137, 235, 0.12),
+    0 0 34px rgba(75, 145, 255, 0.82),
+    0 16px 36px rgba(0, 5, 22, 0.58);
+}
+
+#send-button .icon-container svg {
+  width: 72%;
+  height: 72%;
+  filter: drop-shadow(0 0 8px rgba(136, 191, 255, 0.9));
+}
+
+#send-button .icon-container {
+  width: clamp(46px, 7.2vw, 68px);
+  height: clamp(46px, 7.2vw, 68px);
+  align-items: center;
+  justify-content: center;
+}
+
+#send-button .icon-send img {
+  width: 148%;
+  height: 148%;
+  object-fit: contain;
+  filter: drop-shadow(0 0 10px rgba(136, 191, 255, 0.9));
+}
+
+#send-button:disabled {
+  opacity: 0.92;
+  filter: saturate(1);
+}
+
+#send-button:not(:disabled):hover,
+#send-button:not(:disabled):focus-visible {
+  color: #fff;
+  background: radial-gradient(circle at 38% 28%, rgba(230, 244, 255, 0.55), rgba(63, 132, 239, 0.42) 38%, rgba(6, 27, 75, 0.88) 72%);
+  transform: translateY(-2px) scale(1.02);
+}
+
+.draft-whisper,
+.chat-feedback {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 7%;
+  width: 86%;
+  color: rgba(210, 225, 245, 0.76);
+  font-size: 13px;
+}
+
+@keyframes border-flow {
+  to { background-position: -220% 0; }
+}

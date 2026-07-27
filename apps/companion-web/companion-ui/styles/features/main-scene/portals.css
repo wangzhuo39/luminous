@@ -1,0 +1,150 @@
+/* Side portals */
+.portals-container {
+  position: absolute;
+  inset: 0;
+  z-index: 28;
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  pointer-events: none;
+  transform: none;
+}
+
+.portal-btn,
+.portal-top-left,
+.portal-mid-left,
+.portal-top-right,
+.portal-bottom-right {
+  position: absolute;
+  inset: auto;
+  width: clamp(112px, 15vw, 142px);
+  height: clamp(158px, 18vw, 178px);
+  min-width: 56px;
+  min-height: 78px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: clamp(10px, 1.4vh, 18px);
+  padding: 0;
+  color: rgba(241, 246, 255, 0.94);
+  font-family: var(--main-ui-serif);
+  opacity: 1;
+  pointer-events: auto;
+  text-shadow: 0 3px 14px rgba(0, 4, 16, 0.96);
+  transform: none;
+  transition: filter 180ms ease, transform 180ms ease;
+}
+
+.portal-top-left { top: 12.2%; left: 5%; }
+.portal-mid-left { top: 25%; left: 5%; }
+.portal-bottom-right { top: 13.1%; right: 5%; }
+.portal-top-right { top: 25.6%; right: 5%; }
+
+.portal-btn:hover,
+.portal-btn:focus-visible {
+  opacity: 1;
+  filter: brightness(1.18);
+  transform: translateY(-3px);
+}
+
+.portal-object__shape,
+.portal-time-shard,
+.portal-memory-crystal,
+.portal-frost-pull,
+.portal-letter {
+  position: relative;
+  inset: auto;
+  width: clamp(98px, 13vw, 126px);
+  height: clamp(98px, 13vw, 126px);
+  display: grid;
+  place-items: center;
+  overflow: visible;
+  background:
+    radial-gradient(circle at 42% 38%, rgba(137, 191, 255, 0.34), rgba(31, 78, 158, 0.22) 35%, rgba(3, 14, 39, 0.64) 68%, rgba(1, 7, 20, 0.78));
+  border: 1px solid rgba(202, 224, 255, 0.55);
+  border-radius: 50%;
+  box-shadow:
+    inset 0 0 0 5px rgba(104, 159, 230, 0.08),
+    inset 0 0 26px rgba(100, 164, 255, 0.24),
+    0 0 0 2px rgba(100, 151, 226, 0.1),
+    0 0 28px rgba(75, 139, 242, 0.34),
+    0 14px 28px rgba(0, 5, 20, 0.52);
+  clip-path: none;
+  transform: none;
+}
+
+.portal-object__shape::before,
+.portal-object__shape::after {
+  position: absolute;
+  content: "";
+  pointer-events: none;
+  border-radius: 50%;
+}
+
+.portal-object__shape::before {
+  inset: -10px;
+  border: 1px solid rgba(179, 211, 255, 0.38);
+  box-shadow: inset 0 0 20px rgba(80, 142, 240, 0.12), 0 0 15px rgba(112, 169, 255, 0.2);
+}
+
+.portal-object__shape::after {
+  inset: 8px;
+  border: 1px dashed rgba(195, 220, 255, 0.28);
+}
+
+.portal-object__shape svg,
+.portal-entry-icon {
+  position: relative;
+  z-index: 2;
+  width: 86%;
+  height: 86%;
+  overflow: visible;
+  fill: rgba(83, 143, 247, 0.14);
+  stroke: rgba(192, 222, 255, 0.92);
+  stroke-width: 1.4;
+  filter: drop-shadow(0 0 9px rgba(92, 158, 255, 0.8));
+}
+
+.portal-object__shape .portal-glyph-fill {
+  fill: rgba(90, 153, 255, 0.2);
+}
+
+.portal-letter svg {
+  width: 70%;
+  height: 70%;
+  fill: none;
+  stroke-width: 1.8;
+}
+
+.portal-object__label {
+  position: static;
+  color: rgba(244, 247, 251, 0.94) !important;
+  font-size: clamp(20px, 2.8vw, 30px);
+  line-height: 1;
+  letter-spacing: 0.12em;
+  opacity: 1 !important;
+  transform: none;
+}
+
+.portal-letter__fold,
+.portal-object__core {
+  position: absolute;
+  z-index: 3;
+  width: 56%;
+  height: 38%;
+  background: linear-gradient(145deg, rgba(40, 98, 192, 0.25), rgba(7, 25, 67, 0.38));
+  border: 2px solid rgba(220, 238, 255, 0.94);
+  box-shadow: inset 0 0 12px rgba(80, 151, 255, 0.22), 0 0 12px rgba(91, 155, 255, 0.68);
+}
+
+.portal-letter__fold {
+  clip-path: polygon(0 0, 50% 58%, 100% 0, 100% 100%, 0 100%);
+}
+
+.portal-object__core {
+  clip-path: polygon(0 0, 50% 58%, 100% 0, 100% 100%, 0 100%);
+  transform: rotate(180deg);
+  opacity: 0.72;
+}

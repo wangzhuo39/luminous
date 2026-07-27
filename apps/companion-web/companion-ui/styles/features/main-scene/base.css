@@ -1,0 +1,69 @@
+/*
+ * Main-page reconstruction against docs/front_design/main/ui.png.
+ * Loaded last on purpose: it replaces only the main scene presentation while
+ * retaining all existing hooks, controllers and overlay dialogs.
+ */
+
+:root {
+  --main-ui-serif: "Songti SC", "STSong", "Noto Serif CJK SC", "Noto Serif SC", serif;
+  --main-ui-sans: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --main-ui-white: rgba(244, 247, 251, 0.96);
+  --main-ui-muted: rgba(206, 216, 233, 0.58);
+  --main-ui-edge: rgba(193, 220, 255, 0.62);
+  --main-ui-blue: #86b9ff;
+}
+
+.scene-container {
+  position: relative;
+  display: block;
+  isolation: isolate;
+  overflow: hidden;
+  background: #020711;
+}
+
+.scene-background {
+  z-index: 0;
+  background:
+    radial-gradient(circle at 50% 20%, rgba(32, 83, 155, 0.22), transparent 42%),
+    #020711;
+}
+
+.solarium-environment,
+.foreground-condensation,
+.update-prism {
+  display: none !important;
+}
+
+.companion-container {
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  background-image: url('../../../assets/yezheng.png');
+  background-size: cover;
+  background-position: 50% 0;
+  background-repeat: no-repeat;
+  opacity: 1;
+  filter: saturate(0.96) contrast(1.02) brightness(0.94);
+  -webkit-mask-image: none;
+  mask-image: none;
+  transform: none !important;
+}
+
+.scene-container::before {
+  z-index: 2;
+  background:
+    linear-gradient(180deg, rgba(1, 5, 14, 0.05) 0%, rgba(2, 8, 19, 0.02) 32%, rgba(2, 8, 19, 0.28) 50%, rgba(1, 6, 15, 0.86) 78%, rgba(1, 5, 13, 0.48) 100%),
+    linear-gradient(90deg, rgba(0, 4, 12, 0.18), transparent 22%, transparent 78%, rgba(0, 4, 12, 0.18));
+  transition: none;
+}
+
+.scene-container::after {
+  z-index: 3;
+  background:
+    radial-gradient(circle at 50% 29%, transparent 0 20%, rgba(4, 15, 37, 0.04) 38%, rgba(0, 5, 15, 0.3) 100%),
+    linear-gradient(180deg, rgba(19, 59, 119, 0.06), rgba(3, 12, 29, 0.08));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  transition: none;
+}

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <defs><linearGradient id="memoryCrystal" x1="15" y1="12" x2="82" y2="90"><stop stop-color="#F2FBFF" stop-opacity=".95"/><stop offset=".4" stop-color="#82C6FF" stop-opacity=".82"/><stop offset="1" stop-color="#3D61C0" stop-opacity=".3"/></linearGradient></defs>
+  <circle cx="50" cy="50" r="39" stroke="#B8DCFF" stroke-opacity=".48"/>
+  <ellipse cx="50" cy="50" rx="45" ry="16" stroke="#E4F4FF" stroke-opacity=".42" transform="rotate(28 50 50)"/>
+  <path d="M50 12 78 31 70 72 50 89 26 70 22 31Z" fill="url(#memoryCrystal)" fill-opacity=".55" stroke="#E7F7FF" stroke-width="1.8"/>
+  <path d="m50 12 2 77M22 31l30 17 26-17M26 70l26-22 18 25M52 48 70 72" stroke="#E4F5FF" stroke-opacity=".85" stroke-width="1.2"/>
+  <circle cx="19" cy="24" r="2" fill="#F2FBFF"/><circle cx="82" cy="71" r="1.6" fill="#A9D7FF"/>
+</svg>

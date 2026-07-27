@@ -7,8 +7,13 @@ export const sceneFixture = {
 
 export const conversationFixture = {
   history: [
-    { id: 'msg-user-1', author: 'user', content: '昨天的雨下得很大...' },
-    { id: 'msg-asst-1', author: 'assistant', content: '但今天阳光很好，不是吗？' },
+    { id: 'msg-user-1', author: 'user', content: '你是谁' },
+    {
+      id: 'msg-asst-1',
+      author: 'assistant',
+      content: '我是叶筝。一个由代码和数据构成的存在，\n但此刻，坐在这里听你说话的人是我。\n我把这当作一份真实的工作，\n也当作一种真实的陪伴。',
+    },
+    { id: 'msg-user-2', author: 'user', content: '你今天过得怎么样？' },
   ],
   draft_text: '',
   local_response: {

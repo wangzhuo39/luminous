@@ -1,0 +1,181 @@
+@media (max-width: 600px) {
+  .top-scene-header {
+    top: max(2.2%, env(safe-area-inset-top));
+    right: 4.2%;
+    left: 4.6%;
+  }
+
+  .scene-clock {
+    font-size: clamp(28px, 8vw, 34px);
+  }
+
+  .scene-clock-line {
+    gap: 8px;
+  }
+
+  .scene-crescent {
+    width: 22px;
+    border-width: 1.5px;
+  }
+
+  .scene-period,
+  .scene-weather,
+  .companion-presence {
+    font-size: clamp(12px, 3.6vw, 15px);
+  }
+
+  .scene-weather {
+    margin-top: 7px;
+  }
+
+  .companion-name {
+    font-size: clamp(23px, 7vw, 28px);
+  }
+
+  .companion-presence {
+    gap: 5px;
+    margin-top: 5px;
+  }
+
+  .companion-presence > span {
+    width: 9px;
+    height: 9px;
+  }
+
+  .companion-identity {
+    gap: 9px;
+  }
+
+  .scene-more {
+    width: 40px;
+    gap: 3px;
+  }
+
+  .scene-more > span {
+    width: 3px;
+    height: 3px;
+  }
+
+  .portal-btn,
+  .portal-top-left,
+  .portal-mid-left,
+  .portal-top-right,
+  .portal-bottom-right {
+    width: 76px;
+    height: 103px;
+    gap: 8px;
+  }
+
+  .portal-top-left { top: 13.6%; left: 1.5%; }
+  .portal-mid-left { top: 27.2%; left: 1.5%; }
+  .portal-bottom-right { top: 14.8%; right: 1.5%; }
+  .portal-top-right { top: 28.4%; right: 1.5%; }
+
+  .portal-object__shape,
+  .portal-time-shard,
+  .portal-memory-crystal,
+  .portal-frost-pull,
+  .portal-letter {
+    width: 60px;
+    height: 60px;
+  }
+
+  .portal-object__shape::before {
+    inset: -5px;
+  }
+
+  .portal-object__label {
+    font-size: 16px;
+  }
+
+  #dialogue-stream {
+    top: 45.7%;
+    left: 7%;
+    width: 86%;
+    height: 26.2%;
+    padding-left: 24px;
+    gap: 10px;
+  }
+
+  #dialogue-stream .user-message {
+    font-size: clamp(13px, 3.9vw, 16px);
+  }
+
+  #dialogue-stream .assistant-message {
+    font-size: clamp(16px, 4.8vw, 20px);
+    line-height: 1.78;
+  }
+
+  .companion-status-panel {
+    top: 73.8%;
+    left: 3.8%;
+    width: 92.4%;
+    height: 12.5%;
+    padding: 2% 1%;
+    border-radius: 28px;
+  }
+
+  .companion-status-item {
+    gap: 5px;
+  }
+
+  .status-orb {
+    width: clamp(36px, 10.5vw, 44px);
+  }
+
+  .status-copy {
+    gap: 4px;
+  }
+
+  .status-copy strong {
+    font-size: clamp(11px, 3.2vw, 13px);
+  }
+
+  .status-copy small {
+    font-size: clamp(10px, 2.6vw, 11px);
+  }
+
+  .input-surface-container {
+    bottom: max(2.1%, env(safe-area-inset-bottom));
+    left: 3.8%;
+    width: 92.4%;
+    height: 8.1%;
+    gap: 8px;
+  }
+
+  .input-wrapper {
+    border-radius: 999px;
+  }
+
+  #chat-input {
+    padding-right: 14px;
+    padding-left: 54px;
+    font-size: 14px;
+  }
+
+  #send-button {
+    width: 62px;
+    height: 62px;
+  }
+
+  #send-button .icon-container {
+    width: 38px;
+    height: 38px;
+  }
+}
+
+body[data-keyboard-visible="true"] .top-scene-header,
+body[data-keyboard-visible="true"] .portals-container,
+body[data-keyboard-visible="true"] .companion-status-panel {
+  display: none;
+}
+
+body[data-keyboard-visible="true"] #dialogue-stream {
+  top: 8%;
+  height: 46dvh;
+  max-height: none;
+}
+
+body[data-keyboard-visible="true"] .input-surface-container {
+  bottom: max(10px, env(safe-area-inset-bottom));
+}

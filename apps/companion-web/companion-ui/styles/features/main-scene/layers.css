@@ -1,0 +1,7 @@
+/* Keep dialogs and action confirmations above the reconstructed scene. */
+#overlay-manager,
+.luminous-dialog,
+.action-preview-card {
+  z-index: 1000;
+}
+
