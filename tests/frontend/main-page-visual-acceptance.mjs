@@ -43,6 +43,13 @@ async function inspectPage(page, viewport, screenshotPath) {
       image: getComputedStyle(document.querySelector('#companion-figure')).backgroundImage,
       artwork: Object.fromEntries([
         '.status-frame-art', '.input-frame-art', '#send-button .icon-send img',
+        '.status-orb-heart .status-orb-art',
+        '.status-orb-rain .status-orb-art',
+        '.status-orb-moon .status-orb-art',
+        '#today-portal .portal-entry-art',
+        '#memory-portal .portal-entry-art',
+        '#outbox-portal .portal-entry-art',
+        '#privacy-portal .portal-entry-art',
       ].map((selector) => {
         const imageNode = document.querySelector(selector);
         return [selector, Boolean(imageNode?.complete && imageNode.naturalWidth > 0)];

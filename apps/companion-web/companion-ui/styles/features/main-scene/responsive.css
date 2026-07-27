@@ -116,11 +116,16 @@
   }
 
   .companion-status-item {
-    gap: 5px;
+    gap: 3px;
   }
 
   .status-orb {
-    width: clamp(36px, 10.5vw, 44px);
+    width: clamp(40px, 11vw, 46px);
+  }
+
+  .companion-status-content {
+    grid-template-columns: 0.9fr 1.2fr 0.9fr;
+    padding-inline: 3.8%;
   }
 
   .status-copy {
@@ -128,11 +133,13 @@
   }
 
   .status-copy strong {
-    font-size: clamp(11px, 3.2vw, 13px);
+    font-size: clamp(10px, 2.8vw, 11px);
+    letter-spacing: 0.02em;
   }
 
   .status-copy small {
-    font-size: clamp(10px, 2.6vw, 11px);
+    font-size: clamp(9px, 2.35vw, 10px);
+    letter-spacing: 0.01em;
   }
 
   .input-surface-container {

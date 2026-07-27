@@ -1,4 +1,4 @@
-const CACHE_NAME = 'luminous-shell-v4';
+const CACHE_NAME = 'luminous-shell-v6';
 const SHELL_ASSETS = [
   './',
   './index.html',
@@ -14,6 +14,13 @@ const SHELL_ASSETS = [
   './assets/generated/input-frame-glass.png',
   './assets/generated/send-button-crystal.png',
   './assets/generated/status-frame-ornate.png',
+  './assets/generated/status-heart-orb.png',
+  './assets/generated/status-quiet-orb.png',
+  './assets/generated/status-rain-orb.png',
+  './assets/generated/portal-today-orb.png',
+  './assets/generated/portal-memory-orb.png',
+  './assets/generated/portal-letter-orb.png',
+  './assets/generated/portal-heart-orb.png',
   './assets/icons/heart-trace.svg',
   './assets/icons/heartbeat.svg',
   './assets/icons/letter.svg',

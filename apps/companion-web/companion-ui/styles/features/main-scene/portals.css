@@ -26,7 +26,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  gap: clamp(10px, 1.4vh, 18px);
+  gap: clamp(14px, 1.8vh, 26px);
   padding: 0;
   color: rgba(241, 246, 255, 0.94);
   font-family: var(--main-ui-serif);
@@ -37,10 +37,10 @@
   transition: filter 180ms ease, transform 180ms ease;
 }
 
-.portal-top-left { top: 12.2%; left: 5%; }
-.portal-mid-left { top: 25%; left: 5%; }
-.portal-bottom-right { top: 13.1%; right: 5%; }
-.portal-top-right { top: 25.6%; right: 5%; }
+.portal-top-left { top: 11.7%; left: 4%; }
+.portal-mid-left { top: 23.8%; left: 4%; }
+.portal-bottom-right { top: 12.8%; right: 5%; }
+.portal-top-right { top: 25.1%; right: 5%; }
 
 .portal-btn:hover,
 .portal-btn:focus-visible {
@@ -56,8 +56,8 @@
 .portal-letter {
   position: relative;
   inset: auto;
-  width: clamp(98px, 13vw, 126px);
-  height: clamp(98px, 13vw, 126px);
+  width: clamp(112px, 15vw, 148px);
+  height: clamp(112px, 15vw, 148px);
   display: grid;
   place-items: center;
   overflow: visible;
@@ -105,6 +105,29 @@
   stroke: rgba(192, 222, 255, 0.92);
   stroke-width: 1.4;
   filter: drop-shadow(0 0 9px rgba(92, 158, 255, 0.8));
+}
+
+.portal-entry-art {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 50%;
+  filter:
+    drop-shadow(0 8px 14px rgba(0, 5, 24, 0.5))
+    drop-shadow(0 0 12px rgba(91, 158, 255, 0.38));
+}
+
+.portal-object__shape.is-artwork-ready {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.portal-object__shape.is-artwork-ready::before,
+.portal-object__shape.is-artwork-ready::after {
+  visibility: hidden;
 }
 
 .portal-object__shape .portal-glyph-fill {
