@@ -24,7 +24,9 @@ async function productionGateAndChat() {
     const request = route.request();
     const url = new URL(request.url());
     requests.push({ method: request.method(), path: url.pathname });
-    if (url.pathname === '/api/state') {
+    if (url.pathname === '/api/auth/session') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"authenticated":true}' });
+    } else if (url.pathname === '/api/state') {
       await route.fulfill({
         status: 200, contentType: 'application/json',
         body: JSON.stringify({ state: { mood: 'calm' } }),
@@ -51,8 +53,10 @@ async function productionGateAndChat() {
   await page.locator('[data-hook="chat-input"]').fill('今天有点累');
   await page.locator('[data-hook="input-form"]').evaluate((form) => form.requestSubmit());
   await page.locator('[data-hook="dialogue-stream"]').getByText('我在这里，听见你了。').waitFor();
-  assert.deepEqual(requests.slice(0, 2), [
-    { method: 'GET', path: '/api/state' }, { method: 'POST', path: '/api/chat' },
+  assert.deepEqual(requests.slice(0, 3), [
+    { method: 'GET', path: '/api/auth/session' },
+    { method: 'GET', path: '/api/state' },
+    { method: 'POST', path: '/api/chat' },
   ]);
   assert.equal(requests.some(({ path }) => path.startsWith('/api/actions/')), false);
   await page.getByRole('button', { name: '打开今日摘要' }).click();

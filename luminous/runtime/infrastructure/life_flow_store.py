@@ -30,7 +30,9 @@ class LifeFlowStore:
     def _connect(self) -> Iterator[sqlite3.Connection]:
         connection = sqlite3.connect(self.db_path)
         connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA journal_mode = WAL")
         connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("PRAGMA busy_timeout = 5000")
         try:
             yield connection
             connection.commit()
@@ -373,4 +375,3 @@ def _session(row: sqlite3.Row) -> ActivitySession:
 
 def _diary(row: sqlite3.Row) -> DiaryEntry:
     return DiaryEntry.create({**dict(row), "source_event_ids": _payload(row, "source_event_ids_json", [])})
-

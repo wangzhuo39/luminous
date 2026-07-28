@@ -15,6 +15,7 @@ class BackendConfig:
     project_root: Path
     env_path: Path
     frontend_dir: Path
+    data_dir: Path | None = None
     base_url: str = ""
     api_key: str = ""
     model: str = ""
@@ -31,6 +32,10 @@ class BackendConfig:
     notify_timeout_seconds: int = 10
     deployment_mode: str = "local"
     auth_token: str = ""
+    tester_access_code: str = ""
+    session_secret: str = ""
+    session_ttl_seconds: int = 7 * 24 * 60 * 60
+    session_idle_seconds: int = 24 * 60 * 60
     cors_origins: tuple[str, ...] = ()
 
     @property
@@ -58,11 +63,25 @@ class BackendConfig:
     def public_deployment(self) -> bool:
         return self.deployment_mode == "public"
 
+    @property
+    def runtime_data_dir(self) -> Path:
+        if self.data_dir is not None:
+            return self.data_dir.resolve()
+        return (self.project_root / "outputs" / "companion_runtime").resolve()
+
+    @property
+    def cookie_auth_configured(self) -> bool:
+        return bool(self.tester_access_code and self.session_secret)
+
     def validate_server_boundary(self) -> None:
         if self.deployment_mode not in {"local", "public"}:
             raise ValueError("deployment mode must be local or public")
-        if self.public_deployment and (not self.auth_token or not self.cors_origins or "*" in self.cors_origins):
-            raise ValueError("public deployment requires an auth token and explicit CORS origins")
+        if self.tester_access_code and not self.session_secret:
+            raise ValueError("tester access code requires a session secret")
+        if self.public_deployment and (not self.cors_origins or "*" in self.cors_origins):
+            raise ValueError("public deployment requires explicit CORS origins")
+        if self.public_deployment and not (self.auth_token or self.cookie_auth_configured):
+            raise ValueError("public deployment requires bearer or cookie authentication")
 
 
 def load_backend_config(
@@ -91,18 +110,27 @@ def load_backend_config(
     if deployment_mode not in {"local", "public"}:
         raise ValueError("deployment mode must be local or public")
     auth_token = value("LUMINOUS_AUTH_TOKEN", "ROLE_PLAY_AUTH_TOKEN").strip()
+    tester_access_code = value("LUMINOUS_TESTER_ACCESS_CODE", "ROLE_PLAY_TESTER_ACCESS_CODE").strip()
+    session_secret = value("LUMINOUS_SESSION_SECRET", "ROLE_PLAY_SESSION_SECRET").strip()
     cors_origins = tuple(
         origin.strip()
         for origin in value("LUMINOUS_CORS_ORIGINS", "ROLE_PLAY_CORS_ORIGINS").split(",")
         if origin.strip()
     )
-    if deployment_mode == "public" and (not auth_token or not cors_origins or "*" in cors_origins):
-        raise ValueError("public deployment requires an auth token and explicit CORS origins")
+    if tester_access_code and not session_secret:
+        raise ValueError("tester access code requires a session secret")
+    if deployment_mode == "public" and (not cors_origins or "*" in cors_origins):
+        raise ValueError("public deployment requires explicit CORS origins")
+    if deployment_mode == "public" and not (auth_token or (tester_access_code and session_secret)):
+        raise ValueError("public deployment requires bearer or cookie authentication")
+
+    raw_data_dir = value("LUMINOUS_DATA_DIR", "ROLE_PLAY_DATA_DIR").strip()
 
     return BackendConfig(
         project_root=root,
         env_path=env_file,
         frontend_dir=(frontend_dir or root / "apps" / "companion-web" / "companion-ui").resolve(),
+        data_dir=Path(raw_data_dir).expanduser().resolve() if raw_data_dir else None,
         base_url=value("ROLE_PLAY_BASE_URL", "OPENAI_BASE_URL", "base_url").rstrip("/"),
         api_key=value("ROLE_PLAY_API_KEY", "OPENAI_API_KEY", "key"),
         model=value("ROLE_PLAY_MODEL", "OPENAI_MODEL", "model"),
@@ -119,6 +147,10 @@ def load_backend_config(
         notify_timeout_seconds=int(value("ROLE_PLAY_NOTIFY_TIMEOUT", default="10")),
         deployment_mode=deployment_mode,
         auth_token=auth_token,
+        tester_access_code=tester_access_code,
+        session_secret=session_secret,
+        session_ttl_seconds=int(value("LUMINOUS_SESSION_TTL_SECONDS", default=str(7 * 24 * 60 * 60))),
+        session_idle_seconds=int(value("LUMINOUS_SESSION_IDLE_SECONDS", default=str(24 * 60 * 60))),
         cors_origins=cors_origins,
     )
 

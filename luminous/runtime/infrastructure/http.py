@@ -5,6 +5,7 @@ import hmac
 import json
 import logging
 import mimetypes
+from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -12,7 +13,9 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from luminous.runtime.config import PROJECT_ROOT, BackendConfig, load_backend_config
 from luminous.runtime.application.service import CompanionService
+from luminous.runtime.domain.time import parse_iso_datetime
 from luminous.runtime.infrastructure.client import ModelClientError
+from luminous.runtime.infrastructure.auth import LoginRateLimited, SessionAuth
 
 
 LOGGER = logging.getLogger(__name__)
@@ -32,6 +35,7 @@ INTERNAL_HTTP_ENDPOINTS = {
 class CompanionRequestHandler(BaseHTTPRequestHandler):
     service: CompanionService
     config: BackendConfig
+    auth: SessionAuth
 
     server_version = "RolePlayCompanion/0.1"
 
@@ -47,8 +51,21 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
         if not self._authorize(path):
             return
         try:
+            if path == "/api/auth/session":
+                authenticated = (
+                    not self.config.public_deployment
+                    or self.auth.authenticate(self.headers.get("Cookie", ""))
+                )
+                if not authenticated:
+                    self._send_error(HTTPStatus.UNAUTHORIZED, "authentication_required", "authentication required")
+                    return
+                self._send_json(HTTPStatus.OK, {"authenticated": True, "mode": self.config.deployment_mode})
+                return
             if path == "/api/health":
                 self._send_json(HTTPStatus.OK, {"ok": True, "status": "ready" if self.config.mock or self.config.llm_configured else "degraded"})
+                return
+            if path == "/api/health/deep":
+                self._send_json(HTTPStatus.OK, self._deep_health())
                 return
             if path in INTERNAL_HTTP_ENDPOINTS:
                 self._send_error(HTTPStatus.NOT_FOUND, "not_found", "not found")
@@ -169,6 +186,44 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         path = urlparse(self.path).path
         if not self._authorize(path):
+            return
+        if path == "/api/auth/login":
+            if not self.auth.enabled:
+                self._send_error(HTTPStatus.NOT_FOUND, "not_found", "authentication is not configured")
+                return
+            try:
+                payload = self._read_json_body(max_bytes=8 * 1024)
+                access_code = payload.get("access_code", "")
+                if not isinstance(access_code, str) or not access_code.strip():
+                    raise ValueError("access_code is required")
+            except ValueError as exc:
+                self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+                return
+            try:
+                token = self.auth.login(access_code)
+            except LoginRateLimited as exc:
+                self._send_json(
+                    HTTPStatus.TOO_MANY_REQUESTS,
+                    {"error": {"code": "login_rate_limited", "message": "请稍后再试。", "retryable": True}},
+                    response_headers={"Retry-After": str(exc.retry_after_seconds)},
+                )
+                return
+            if token is None:
+                self._send_error(HTTPStatus.UNAUTHORIZED, "invalid_access_code", "access code is not valid")
+                return
+            self._send_json(
+                HTTPStatus.OK,
+                {"authenticated": True, "mode": self.config.deployment_mode},
+                response_headers={"Set-Cookie": self.auth.cookie_header(token)},
+            )
+            return
+        if path == "/api/auth/logout":
+            self.auth.logout(self.headers.get("Cookie", ""))
+            self._send_json(
+                HTTPStatus.OK,
+                {"authenticated": False},
+                response_headers={"Set-Cookie": self.auth.cookie_header("", clear=True)},
+            )
             return
         if not self._begin_idempotency("POST", path):
             return
@@ -553,14 +608,50 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
         if not self._origin_allowed():
             self._send_error(HTTPStatus.FORBIDDEN, "origin_not_allowed", "origin is not allowed")
             return False
-        if path == "/api/health" or not self.config.public_deployment:
+        if path == "/api/health/deep":
+            authorization = self.headers.get("Authorization", "")
+            expected = f"Bearer {self.config.auth_token}"
+            if self.config.auth_token and hmac.compare_digest(authorization, expected):
+                return True
+            self._send_error(HTTPStatus.UNAUTHORIZED, "admin_authentication_required", "authentication required")
+            return False
+        if path in {"/api/health", "/api/auth/login", "/api/auth/session"} or not self.config.public_deployment:
             return True
         authorization = self.headers.get("Authorization", "")
         expected = f"Bearer {self.config.auth_token}"
-        if not self.config.auth_token or not hmac.compare_digest(authorization, expected):
-            self._send_error(HTTPStatus.UNAUTHORIZED, "authentication_required", "authentication required")
-            return False
-        return True
+        if self.config.auth_token and hmac.compare_digest(authorization, expected):
+            return True
+        if self.auth.authenticate(self.headers.get("Cookie", "")):
+            return True
+        self._send_error(HTTPStatus.UNAUTHORIZED, "authentication_required", "authentication required")
+        return False
+
+    def _deep_health(self) -> dict[str, object]:
+        checks: dict[str, object] = {}
+        try:
+            checks["database"] = self.service.runtime.store.database_probe()
+        except Exception as exc:
+            checks["database"] = {"writable": False, "error": type(exc).__name__}
+        worker = self.service.runtime.store.read_runtime_health("worker")
+        last_seen = parse_iso_datetime(str((worker or {}).get("last_seen_at", "")))
+        age_seconds = None
+        if last_seen is not None:
+            age_seconds = max(0, int((datetime.now(timezone.utc) - last_seen).total_seconds()))
+        worker_ready = bool(
+            worker
+            and age_seconds is not None
+            and age_seconds <= 150
+            and int(worker.get("consecutive_failures", 0)) == 0
+        )
+        checks["worker"] = {
+            "ready": worker_ready,
+            "age_seconds": age_seconds,
+            "consecutive_failures": int((worker or {}).get("consecutive_failures", 0)),
+        }
+        model_ready = self.config.mock or self.config.llm_configured
+        checks["model"] = {"ready": model_ready, "mock": self.config.mock}
+        ready = bool(checks["database"].get("writable") and worker_ready and model_ready)
+        return {"ok": ready, "status": "ready" if ready else "degraded", "checks": checks}
 
     def _begin_idempotency(self, method: str, path: str) -> bool:
         key = self.headers.get("Idempotency-Key", "").strip()
@@ -648,7 +739,13 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def _send_json(self, status: HTTPStatus, payload: dict[str, object]) -> None:
+    def _send_json(
+        self,
+        status: HTTPStatus,
+        payload: dict[str, object],
+        *,
+        response_headers: dict[str, str] | None = None,
+    ) -> None:
         status = HTTPStatus(status)
         if isinstance(payload.get("error"), str):
             message = str(payload["error"])
@@ -671,6 +768,8 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
         self._send_common_headers()
         if status == HTTPStatus.UNAUTHORIZED:
             self.send_header("WWW-Authenticate", "Bearer")
+        for name, value in (response_headers or {}).items():
+            self.send_header(name, value)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
@@ -691,6 +790,7 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
         if origin and self._origin_allowed():
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
+            self.send_header("Access-Control-Allow-Credentials", "true")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, Idempotency-Key")
         self.send_header("Access-Control-Max-Age", "600")
@@ -732,6 +832,7 @@ def make_handler(config: BackendConfig) -> type[CompanionRequestHandler]:
 
     ConfiguredCompanionRequestHandler.config = config
     ConfiguredCompanionRequestHandler.service = service
+    ConfiguredCompanionRequestHandler.auth = SessionAuth(config, service.runtime.store)
     return ConfiguredCompanionRequestHandler
 
 

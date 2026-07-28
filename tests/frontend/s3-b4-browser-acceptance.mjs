@@ -161,7 +161,9 @@ async function apiErrorAndDoubleSubmit() {
   await page.route('**/api/**', async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
-    if (path === '/api/state') {
+    if (path === '/api/auth/session') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"authenticated":true}' });
+    } else if (path === '/api/state') {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

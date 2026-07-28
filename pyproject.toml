@@ -11,6 +11,7 @@ dependencies = ["tqdm>=4.66"]
 [project.scripts]
 luminous-api = "luminous.runtime.infrastructure.http:main"
 luminous-worker = "luminous.runtime.worker:main"
+luminous-backup = "luminous.runtime.infrastructure.backup:main"
 luminous-training = "luminous.training.pipeline.cli:main"
 
 [project.optional-dependencies]

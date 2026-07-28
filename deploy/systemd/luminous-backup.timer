@@ -1,0 +1,12 @@
+[Unit]
+Description=Back up Luminous every six hours
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=6h
+RandomizedDelaySec=10min
+Persistent=true
+Unit=luminous-backup.service
+
+[Install]
+WantedBy=timers.target

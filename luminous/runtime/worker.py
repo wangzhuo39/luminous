@@ -41,24 +41,38 @@ class CompanionWorker:
         clock: callable | None = None,
     ) -> None:
         self.config = config
-        self.store = store or CompanionRuntimeStore.for_project(config.project_root)
+        self.store = store or CompanionRuntimeStore(config.runtime_data_dir)
         self.runtime = runtime or CompanionRuntime(config, store=self.store, clock=clock)
         self.clock = clock or self.runtime.clock
 
     def tick(self, *, now: datetime | None = None, enqueue_periodic: bool = True, limit: int = 10) -> dict[str, Any]:
         now = now or self.clock()
-        if enqueue_periodic:
-            self._enqueue_periodic_jobs(now)
-        claimed = self.store.claim_due_jobs(now=now, limit=limit)
-        results: list[dict[str, Any]] = []
-        for job in claimed:
-            results.append(self._run_job(job, now=now).to_dict())
-        return {
-            "now": utc_now_iso(now),
-            "claimed": [job["job_id"] for job in claimed],
-            "results": results,
-            "pending_jobs": [job["job_id"] for job in self.store.read_jobs(status="queued", limit=20)],
-        }
+        try:
+            if enqueue_periodic:
+                self._enqueue_periodic_jobs(now)
+            claimed = self.store.claim_due_jobs(now=now, limit=limit)
+            results: list[dict[str, Any]] = []
+            for job in claimed:
+                results.append(self._run_job(job, now=now).to_dict())
+            result = {
+                "now": utc_now_iso(now),
+                "claimed": [job["job_id"] for job in claimed],
+                "results": results,
+                "pending_jobs": [job["job_id"] for job in self.store.read_jobs(status="queued", limit=20)],
+            }
+            self.store.record_runtime_health("worker", success=True, now=now)
+            return result
+        except Exception as exc:
+            try:
+                self.store.record_runtime_health(
+                    "worker",
+                    success=False,
+                    error_code=type(exc).__name__,
+                    now=now,
+                )
+            except Exception:
+                pass
+            raise
 
     def run_once(
         self,

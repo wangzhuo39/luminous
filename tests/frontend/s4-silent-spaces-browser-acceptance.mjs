@@ -100,6 +100,10 @@ async function apiErrorRetryAndNoLeak() {
   let outboxAttempts = 0;
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url());
+    if (url.pathname === '/api/auth/session') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"authenticated":true}' });
+      return;
+    }
     if (url.pathname === '/api/state') {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ state: { mood: 'steady', energy: 0.5, support_need: 0.4, risk_level: 'normal', conversation_mode: 'support', dnd_until: '' } }) });
       return;

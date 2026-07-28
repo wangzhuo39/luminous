@@ -183,7 +183,9 @@ async function apiCreateErrorAndExactContract() {
   await page.route('**/api/**', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
-    if (url.pathname === '/api/state') {
+    if (url.pathname === '/api/auth/session') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"authenticated":true}' });
+    } else if (url.pathname === '/api/state') {
       await route.fulfill({
         status: 200, contentType: 'application/json', body: '{"state":{"mood":"calm"}}',
       });

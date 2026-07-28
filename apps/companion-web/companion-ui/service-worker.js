@@ -1,4 +1,4 @@
-const CACHE_NAME = 'luminous-shell-v14';
+const CACHE_NAME = 'luminous-shell-v18';
 const SHELL_ASSETS = [
   './',
   './index.html',
@@ -40,6 +40,7 @@ const SHELL_ASSETS = [
   './styles/crystal-solarium.css',
   './styles/silent-spaces.css',
   './styles/productization.css',
+  './styles/auth-gate.css',
   './styles/main-scene.css',
   './styles/features/main-scene/base.css',
   './styles/features/main-scene/composer.css',
@@ -78,6 +79,7 @@ const SHELL_ASSETS = [
   './js/features/action-proposal/action-controller.js',
   './js/features/action-proposal/action-state.js',
   './js/features/action-proposal/action-view.js',
+  './js/features/auth/auth-gate.js',
   './js/features/life-flow/activity-view.js',
   './js/features/life-flow/calendar-view.js',
   './js/features/life-flow/diary-view.js',

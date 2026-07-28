@@ -39,6 +39,7 @@ import { initSpaceRouter } from './features/productization/space-router.js';
 import { mountMainSceneShell } from './features/main-scene/main-scene-shell.js';
 import { createMainSceneView } from './features/main-scene/main-scene-view.js';
 import { createDomRegistry } from './dom-registry.js';
+import { initAuthGate } from './features/auth/auth-gate.js';
 
 const mainSceneShell = mountMainSceneShell(document.querySelector('#luminous-scene'));
 
@@ -177,9 +178,12 @@ function render() {
   renderRuntime(current);
 }
 
-function main() {
-  const initialViewModels = loadInitialViewModels();
+async function main() {
   const runtimeMode = resolveRuntimeMode(window.location);
+  const authGate = initAuthGate({ runtimeMode });
+  await authGate.ready;
+  authGate.markStarted();
+  const initialViewModels = loadInitialViewModels();
   let draftStorage = null;
   try { draftStorage = window.sessionStorage; } catch { /* Privacy mode can deny storage. */ }
   const recoveredDraft = loadRecoveredDraft(draftStorage);
@@ -466,6 +470,7 @@ function main() {
   dom.body.removeAttribute('data-js-loading');
 
   window.addEventListener('pagehide', () => {
+    authGate.destroy();
     conversation.destroy();
     lifeFlowController.destroy();
     taskView.destroy();
@@ -488,4 +493,8 @@ function main() {
   }, { once: true });
 }
 
-main();
+main().catch((error) => {
+  document.body.dataset.appStatus = 'error';
+  document.body.removeAttribute('data-js-loading');
+  console.error('Luminous startup failed', error);
+});

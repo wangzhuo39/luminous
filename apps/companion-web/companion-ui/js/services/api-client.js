@@ -70,6 +70,9 @@ export async function requestJson(path, options = {}) {
   try {
     const response = await dependencies.fetchImpl(path, requestOptions);
     if (!response.ok) {
+      if (response.status === 401 && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('luminous:auth-required'));
+      }
       throw appErrorFromStatus(response.status);
     }
     if (response.status === 204) {

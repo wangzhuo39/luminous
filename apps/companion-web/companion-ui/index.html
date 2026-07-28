@@ -32,10 +32,17 @@
   <link rel="stylesheet" href="styles/crystal-solarium.css">
   <link rel="stylesheet" href="styles/silent-spaces.css">
   <link rel="stylesheet" href="styles/productization.css">
+  <link rel="stylesheet" href="styles/auth-gate.css">
   <link rel="stylesheet" href="styles/layout-rebase.css">
   <link rel="stylesheet" href="styles/main-scene.css">
 </head>
-<body data-js-loading="true">
+<body data-js-loading="true" data-auth-status="checking">
+  <section class="auth-gate" data-hook="auth-gate" aria-labelledby="auth-title" hidden><div class="auth-gate__panel">
+    <p class="auth-gate__eyebrow">LUMINOUS PRIVATE TEST</p><h1 id="auth-title">进入栖光</h1>
+    <p class="auth-gate__intro">输入测试邀请码，进入属于你的陪伴空间。</p><form data-hook="auth-form"><label for="auth-code">测试邀请码</label>
+      <input id="auth-code" data-hook="auth-code" type="password" autocomplete="one-time-code" required>
+      <button type="submit" data-hook="auth-submit">进入空间</button><p class="auth-gate__error" data-hook="auth-error" role="alert" hidden></p>
+    </form></div></section>
   <main id="luminous-scene" class="scene-container">
     <div class="scene-background" aria-hidden="true"></div>
 

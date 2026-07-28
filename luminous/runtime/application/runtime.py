@@ -48,7 +48,7 @@ class CompanionRuntime:
     ) -> None:
         self.config = config
         self.client = client or ModelClient(config)
-        self.store = store or CompanionRuntimeStore.for_project(config.project_root)
+        self.store = store or CompanionRuntimeStore(config.runtime_data_dir)
         self.clock = clock or _utc_now
         self.prompt_builder = PromptBuilder()
         self.memory_extractor = MemoryExtractor(config, self.client)

@@ -98,6 +98,10 @@ async function verifyApiScenario(name, {
   page.on('pageerror', (error) => errors.push(error.message));
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path === '/api/auth/session') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"authenticated":true}' });
+      return;
+    }
     if (path === '/api/state') {
       await route.fulfill({
         status: 200,

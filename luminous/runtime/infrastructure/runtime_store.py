@@ -813,6 +813,88 @@ class CompanionRuntimeStore:
     def release_api_idempotency(self, key: str) -> None:
         self._execute("DELETE FROM api_idempotency WHERE idempotency_key = ? AND status_code = 0", (key,))
 
+    def create_auth_session(self, session_digest: str, created_at: str, expires_at: str) -> None:
+        self._execute(
+            """
+            INSERT INTO auth_sessions (
+                session_digest, created_at, last_seen_at, expires_at, revoked_at
+            ) VALUES (?, ?, ?, ?, '')
+            """,
+            (session_digest, created_at, created_at, expires_at),
+        )
+
+    def read_auth_session(self, session_digest: str) -> dict[str, Any] | None:
+        row = self._fetch_one(
+            "SELECT session_digest, created_at, last_seen_at, expires_at, revoked_at FROM auth_sessions WHERE session_digest = ?",
+            (session_digest,),
+        )
+        return dict(row) if row is not None else None
+
+    def touch_auth_session(self, session_digest: str, last_seen_at: str) -> None:
+        self._execute(
+            "UPDATE auth_sessions SET last_seen_at = ? WHERE session_digest = ? AND revoked_at = ''",
+            (last_seen_at, session_digest),
+        )
+
+    def revoke_auth_session(self, session_digest: str, revoked_at: str) -> None:
+        self._execute(
+            "UPDATE auth_sessions SET revoked_at = ? WHERE session_digest = ? AND revoked_at = ''",
+            (revoked_at, session_digest),
+        )
+
+    def purge_auth_sessions(self, before: str) -> None:
+        self._execute(
+            "DELETE FROM auth_sessions WHERE expires_at < ? OR (revoked_at != '' AND revoked_at < ?)",
+            (before, before),
+        )
+
+    def record_runtime_health(
+        self,
+        component: str,
+        *,
+        success: bool,
+        error_code: str = "",
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        observed_at = utc_now_iso(now or datetime.now(timezone.utc))
+        with self._connect() as conn:
+            current = conn.execute(
+                "SELECT * FROM runtime_health WHERE component = ?",
+                (component,),
+            ).fetchone()
+            failures = 0 if success else int(current["consecutive_failures"] if current else 0) + 1
+            last_success = observed_at if success else str(current["last_success_at"] if current else "")
+            last_failure = observed_at if not success else str(current["last_failure_at"] if current else "")
+            conn.execute(
+                """
+                INSERT INTO runtime_health (
+                    component, last_seen_at, last_success_at, last_failure_at,
+                    consecutive_failures, error_code
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(component) DO UPDATE SET
+                    last_seen_at = excluded.last_seen_at,
+                    last_success_at = excluded.last_success_at,
+                    last_failure_at = excluded.last_failure_at,
+                    consecutive_failures = excluded.consecutive_failures,
+                    error_code = excluded.error_code
+                """,
+                (component, observed_at, last_success, last_failure, failures, "" if success else error_code[:80]),
+            )
+            conn.commit()
+        return self.read_runtime_health(component) or {}
+
+    def read_runtime_health(self, component: str) -> dict[str, Any] | None:
+        row = self._fetch_one("SELECT * FROM runtime_health WHERE component = ?", (component,))
+        return dict(row) if row is not None else None
+
+    def database_probe(self, *, now: datetime | None = None) -> dict[str, Any]:
+        with self._connect() as conn:
+            integrity = str(conn.execute("PRAGMA quick_check").fetchone()[0])
+        if integrity != "ok":
+            raise RuntimeError("database_integrity_failed")
+        self.record_runtime_health("api", success=True, now=now)
+        return {"writable": True, "integrity": integrity}
+
     def claim_due_jobs(
         self,
         *,
@@ -1910,6 +1992,29 @@ class CompanionRuntimeStore:
             )
             conn.execute(
                 """
+                CREATE TABLE IF NOT EXISTS auth_sessions (
+                    session_digest TEXT PRIMARY KEY,
+                    created_at TEXT NOT NULL,
+                    last_seen_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    revoked_at TEXT NOT NULL DEFAULT ''
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS runtime_health (
+                    component TEXT PRIMARY KEY,
+                    last_seen_at TEXT NOT NULL,
+                    last_success_at TEXT NOT NULL DEFAULT '',
+                    last_failure_at TEXT NOT NULL DEFAULT '',
+                    consecutive_failures INTEGER NOT NULL DEFAULT 0,
+                    error_code TEXT NOT NULL DEFAULT ''
+                )
+                """
+            )
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS reminders (
                     reminder_id TEXT PRIMARY KEY,
                     user_scope TEXT NOT NULL DEFAULT 'default',
@@ -1978,6 +2083,7 @@ class CompanionRuntimeStore:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
+        conn.execute("PRAGMA busy_timeout=5000")
         return conn
 
     def _execute(self, sql: str, params: tuple[Any, ...]) -> None:

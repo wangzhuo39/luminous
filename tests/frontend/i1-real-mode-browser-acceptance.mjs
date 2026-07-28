@@ -45,6 +45,36 @@ async function waitForServer(child, port) {
   throw new Error(`backend did not start: ${child.exitCode}`);
 }
 
+function progress(stage) {
+  if (process.env.LUMINOUS_TEST_PROGRESS === '1') console.log(`I1_PROGRESS ${stage}`);
+}
+
+async function readResponseBody(response) {
+  let timeoutId;
+  try {
+    return await Promise.race([
+      response.json().catch(() => null),
+      new Promise((resolve) => { timeoutId = setTimeout(() => resolve(null), 5_000); }),
+    ]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function stopChild(child) {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const exited = new Promise((resolve) => child.once('exit', resolve));
+  child.kill('SIGTERM');
+  const stopped = await Promise.race([
+    exited.then(() => true),
+    new Promise((resolve) => setTimeout(() => resolve(false), 5_000)),
+  ]);
+  if (!stopped && child.exitCode === null && child.signalCode === null) {
+    child.kill('SIGKILL');
+    await exited;
+  }
+}
+
 async function call(baseUrl, path, options = {}) {
   const response = await fetch(baseUrl + path, {
     headers: { 'Content-Type': 'application/json', ...(options.headers ?? {}) },
@@ -70,7 +100,9 @@ let stderr = '';
 child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
 
 try {
+  progress('server-starting');
   await waitForServer(child, port);
+  progress('server-ready');
   await call(baseUrl, '/api/chat', { method: 'POST', body: { message: '先在这里留下一点真实历史。', history: [] } });
   await call(baseUrl, '/api/tasks', {
     method: 'POST',
@@ -88,12 +120,13 @@ try {
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('response', (response) => {
     if (new URL(response.url()).pathname.startsWith('/api/')) {
-      apiBodies.push(response.json().catch(() => null));
+      apiBodies.push(readResponseBody(response));
     }
   });
 
   await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded' });
   await page.locator('body[data-app-status="ready"]:not([data-js-loading])').waitFor();
+  progress('browser-ready');
   assert.doesNotMatch(page.url(), /mode=fixture/);
 
   const browserFlow = await page.evaluate(async () => {
@@ -141,6 +174,7 @@ try {
   });
   assert.ok(browserFlow.taskId);
   assert.equal(browserFlow.actionConfirmed, true);
+  progress('browser-api-flow-complete');
 
   const messagesBefore = await page.locator('[data-hook="dialogue-stream"] .message').count();
   await page.locator('[data-hook="chat-input"]').fill('浏览器真实模式问候。');
@@ -148,24 +182,29 @@ try {
   await page.waitForResponse((response) => response.url().includes('/api/chat') && response.request().method() === 'POST');
   await page.waitForFunction((before) => document.querySelectorAll('[data-hook="dialogue-stream"] .message').length >= before + 2, messagesBefore);
   assert.equal(await page.locator('[data-hook="chat-input"]').inputValue(), '');
+  progress('browser-chat-complete');
 
   await page.locator('#today-portal').click();
   await page.locator('#today-overlay[data-today-status="ready"]').waitFor();
   assert.match(await page.locator('[data-hook="today-panel"]').innerText(), /浏览器验收任务/);
 
   await page.locator('#today-overlay .dialog-close-btn').click();
+  progress('today-space-complete');
 
   await page.locator('#memory-portal').click();
   await page.locator('#memory-overlay[open]').waitFor();
   await page.locator('#memory-overlay .dialog-close-btn').click();
+  progress('memory-space-complete');
 
   await page.locator('#privacy-portal').click();
   await page.locator('#privacy-overlay[open]').waitFor();
   await page.locator('#privacy-overlay .dialog-close-btn').click();
+  progress('privacy-space-complete');
 
   await page.locator('#outbox-portal').click();
   await page.locator('#outbox-overlay[open]').waitFor();
   await page.locator('#outbox-overlay .dialog-close-btn').click();
+  progress('outbox-space-complete');
 
   const readLayoutSnapshot = async () => page.evaluate(() => {
     const selectors = ['#dialogue-stream', '#input-surface', '#today-portal', '#memory-portal', '#privacy-portal', '#outbox-portal'];
@@ -194,10 +233,12 @@ try {
     '#privacy-portal': 0,
     '#outbox-portal': 0,
   });
+  progress('desktop-layout-complete');
 
   await page.setViewportSize({ width: 430, height: 932 });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.locator('body[data-app-status="ready"]:not([data-js-loading])').waitFor();
+  progress('mobile-reload-ready');
   await page.waitForTimeout(100);
   const mobileLayout = await readLayoutSnapshot();
   assert.equal(mobileLayout.atLatest, true);
@@ -208,17 +249,20 @@ try {
     '#privacy-portal': 0,
     '#outbox-portal': 0,
   });
+  progress('mobile-layout-complete');
 
   await page.waitForTimeout(200);
   const bodies = await Promise.all(apiBodies);
+  progress('api-bodies-complete');
   const leaks = bodies.flatMap((body) => [...findForbidden(body ?? {})]);
   assert.deepEqual([...new Set(leaks)], []);
   assert.deepEqual(errors, []);
   await context.close();
   await browser.close();
+  progress('browser-closed');
 
-  child.kill('SIGTERM');
-  await new Promise((resolveExit) => child.once('exit', resolveExit));
+  await stopChild(child);
+  progress('server-stopped');
   const restarted = spawn('python3', [
     '-m', 'luminous.runtime.infrastructure.http', '--project-root', dataRoot,
     '--frontend', frontendDir, '--env', join(dataRoot, '.env'),
@@ -226,18 +270,18 @@ try {
   ], { cwd: repoRoot, env: { ...process.env, PYTHONPATH: repoRoot }, stdio: ['ignore', 'pipe', 'pipe'] });
   try {
     await waitForServer(restarted, port);
+    progress('restart-ready');
     const restored = await call(baseUrl, '/api/state?include=history');
     assert.ok(restored.history.items.some((item) => item.content.includes('真实历史')));
     const tasks = await call(baseUrl, '/api/tasks?limit=10');
     assert.ok(tasks.items.some((item) => item.title === '浏览器验收任务'));
   } finally {
-    restarted.kill('SIGTERM');
-    await new Promise((resolveExit) => restarted.once('exit', resolveExit));
+    await stopChild(restarted);
   }
   console.log('I1_REAL_MODE_BROWSER_OK chat=restored life_flow=complete memory=edited-forgotten action=confirmed network_boundary=clean restart=persistent');
 } catch (error) {
   throw new Error(`${error.message}\nbackend stderr: ${stderr.slice(-2000)}`);
 } finally {
-  if (!child.killed) child.kill('SIGTERM');
+  await stopChild(child);
   await rm(dataRoot, { recursive: true, force: true });
 }
