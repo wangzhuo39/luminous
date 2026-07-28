@@ -76,8 +76,8 @@
 }
 
 .scene-container[data-solar-phase="night"] .portals-container {
-  filter: brightness(0.82) contrast(0.92);
-  opacity: 0.84;
+  filter: none;
+  opacity: 1;
 }
 
 .scene-container[data-solar-phase="dusk"] .volumetric-rays::after,

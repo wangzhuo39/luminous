@@ -1,4 +1,4 @@
-const CACHE_NAME = 'luminous-shell-v6';
+const CACHE_NAME = 'luminous-shell-v14';
 const SHELL_ASSETS = [
   './',
   './index.html',
@@ -8,6 +8,7 @@ const SHELL_ASSETS = [
   './assets/luminous-icon-192.png',
   './assets/luminous-icon-512.png',
   './assets/yezheng.png',
+  './assets/backgroundv2.png',
   './assets/frames/status-center.svg',
   './assets/frames/status-left.svg',
   './assets/frames/status-right.svg',
@@ -17,10 +18,10 @@ const SHELL_ASSETS = [
   './assets/generated/status-heart-orb.png',
   './assets/generated/status-quiet-orb.png',
   './assets/generated/status-rain-orb.png',
-  './assets/generated/portal-today-orb.png',
-  './assets/generated/portal-memory-orb.png',
-  './assets/generated/portal-letter-orb.png',
-  './assets/generated/portal-heart-orb.png',
+  './assets/generated/today.png',
+  './assets/generated/memory.png',
+  './assets/generated/letter.png',
+  './assets/generated/heart.png',
   './assets/icons/heart-trace.svg',
   './assets/icons/heartbeat.svg',
   './assets/icons/letter.svg',
@@ -93,6 +94,7 @@ const SHELL_ASSETS = [
   './js/features/productization/pwa-controller.js',
   './js/features/productization/space-router.js',
   './js/features/main-scene/main-scene-shell.js',
+  './js/features/main-scene/scene-background.js',
   './js/features/main-scene/main-scene-view.js',
   './js/state/app-store.js',
   './js/state/core-state.js',

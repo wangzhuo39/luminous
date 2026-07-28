@@ -7,6 +7,7 @@ from typing import Mapping
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+LOWERCASE_LLM_ALIASES = frozenset({"base_url", "key", "model"})
 
 
 @dataclass
@@ -131,7 +132,12 @@ def _read_env_file(path: Path) -> dict[str, str]:
         if not stripped or stripped.startswith("#") or "=" not in stripped:
             continue
         key, raw_value = stripped.split("=", 1)
-        values[key.strip()] = raw_value.strip().strip('"').strip("'")
+        key = key.strip()
+        value = raw_value.strip().strip('"').strip("'")
+        if key in LOWERCASE_LLM_ALIASES:
+            values.setdefault(key, value)
+        else:
+            values[key] = value
     return values
 
 

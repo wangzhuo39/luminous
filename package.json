@@ -4,6 +4,7 @@
   "scripts": {
     "test": "npm run test:frontend",
     "test:frontend": "node --test tests/frontend/*.test.mjs",
+    "test:real": "node tests/frontend/i1-real-mode-browser-acceptance.mjs",
     "test:browser": "node tests/frontend/crystal-solarium-browser-acceptance.mjs && node tests/frontend/s3-browser-acceptance.mjs && node tests/frontend/s3-b4-browser-acceptance.mjs && node tests/frontend/s3-b5-browser-acceptance.mjs && node tests/frontend/s3-b6-browser-acceptance.mjs && node tests/frontend/s3-b7-browser-acceptance.mjs && node tests/frontend/s3-b8-browser-acceptance.mjs && node tests/frontend/s4-silent-spaces-browser-acceptance.mjs && node tests/frontend/s5-productization-browser-acceptance.mjs"
   },
   "devDependencies": {

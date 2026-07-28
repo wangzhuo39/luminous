@@ -50,6 +50,16 @@
   transform: none !important;
 }
 
+:root[data-scene-background="quiet-night"] .companion-container {
+  background-image: url('../../../assets/yezheng.png');
+}
+
+:root[data-scene-background="crystal-sanctuary"] .companion-container {
+  background-image: url('../../../assets/backgroundv2.png');
+  background-position: 50% 32%;
+  filter: saturate(0.92) contrast(1.02) brightness(0.82);
+}
+
 .scene-container::before {
   z-index: 2;
   background:

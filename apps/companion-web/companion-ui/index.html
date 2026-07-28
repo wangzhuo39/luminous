@@ -11,6 +11,16 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="assets/luminous-icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/luminous-icon-192.png">
+  <script>
+    (() => {
+      try {
+        const backgroundId = localStorage.getItem('luminous.scene-background.v1');
+        if (backgroundId === 'crystal-sanctuary') {
+          document.documentElement.dataset.sceneBackground = backgroundId;
+        }
+      } catch { /* Local storage can be unavailable. */ }
+    })();
+  </script>
   <link rel="stylesheet" href="styles/tokens.css">
   <link rel="stylesheet" href="styles/base.css">
   <link rel="stylesheet" href="styles/scene.css">
@@ -111,25 +121,25 @@
     <nav id="portals-layer" class="portals-container" aria-label="空间功能入口">
       <button id="today-portal" class="portal-btn portal-object portal-top-left" aria-label="打开今日摘要" aria-expanded="false" data-space="today" data-tier="primary">
         <span class="portal-object__shape portal-time-shard" aria-hidden="true">
-          <img class="portal-entry-art" src="assets/generated/portal-today-orb.png" data-fallback-src="assets/icons/today.svg" alt="">
+          <img class="portal-entry-art" src="assets/generated/today.png" data-fallback-src="assets/icons/today.svg" alt="">
         </span>
         <span class="portal-object__label">今日</span>
       </button>
       <button id="memory-portal" class="portal-btn portal-object portal-mid-left" aria-label="探索记忆" aria-expanded="false" data-space="memory" data-tier="primary">
         <span class="portal-object__shape portal-memory-crystal" aria-hidden="true">
-          <img class="portal-entry-art" src="assets/generated/portal-memory-orb.png" data-fallback-src="assets/icons/memory.svg" alt="">
+          <img class="portal-entry-art" src="assets/generated/memory.png" data-fallback-src="assets/icons/memory.svg" alt="">
         </span>
         <span class="portal-object__label">记忆</span>
       </button>
       <button id="privacy-portal" class="portal-btn portal-object portal-top-right" aria-label="打开隐私与设置" aria-expanded="false" data-space="privacy" data-tier="primary">
         <span class="portal-object__shape portal-frost-pull" aria-hidden="true">
-          <img class="portal-entry-art" src="assets/generated/portal-heart-orb.png" data-fallback-src="assets/icons/heart-trace.svg" alt="">
+          <img class="portal-entry-art" src="assets/generated/heart.png" data-fallback-src="assets/icons/heart-trace.svg" alt="">
         </span>
         <span class="portal-object__label">心迹</span>
       </button>
       <button id="outbox-portal" class="portal-btn portal-object portal-bottom-right" aria-label="查看来信" aria-expanded="false" data-hook="outbox-portal" data-space="outbox" data-tier="primary">
         <span class="portal-object__shape portal-letter" aria-hidden="true">
-          <img class="portal-entry-art" src="assets/generated/portal-letter-orb.png" data-fallback-src="assets/icons/letter.svg" alt="">
+          <img class="portal-entry-art" src="assets/generated/letter.png" data-fallback-src="assets/icons/letter.svg" alt="">
         </span>
         <span class="portal-object__label">来信</span>
         <span class="portal-unread-badge sr-only" data-hook="outbox-unread-count"></span>

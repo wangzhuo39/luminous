@@ -18,8 +18,8 @@
 .portal-bottom-right {
   position: absolute;
   inset: auto;
-  width: clamp(112px, 15vw, 142px);
-  height: clamp(158px, 18vw, 178px);
+  width: clamp(124px, 17vw, 160px);
+  height: clamp(174px, 20vw, 190px);
   min-width: 56px;
   min-height: 78px;
   display: flex;
@@ -56,8 +56,8 @@
 .portal-letter {
   position: relative;
   inset: auto;
-  width: clamp(112px, 15vw, 148px);
-  height: clamp(112px, 15vw, 148px);
+  width: clamp(124px, 17vw, 160px);
+  height: clamp(124px, 17vw, 160px);
   display: grid;
   place-items: center;
   overflow: visible;
@@ -71,7 +71,8 @@
     0 0 0 2px rgba(100, 151, 226, 0.1),
     0 0 28px rgba(75, 139, 242, 0.34),
     0 14px 28px rgba(0, 5, 20, 0.52);
-  clip-path: none;
+  clip-path: inset(-20%);
+  pointer-events: none;
   transform: none;
 }
 
@@ -113,10 +114,10 @@
   width: 100%;
   height: 100%;
   object-fit: contain;
-  border-radius: 50%;
+  opacity: 1;
   filter:
-    drop-shadow(0 8px 14px rgba(0, 5, 24, 0.5))
-    drop-shadow(0 0 12px rgba(91, 158, 255, 0.38));
+    drop-shadow(0 10px 16px rgba(0, 5, 24, 0.44))
+    drop-shadow(0 0 9px rgba(126, 183, 255, 0.24));
 }
 
 .portal-object__shape.is-artwork-ready {
@@ -143,11 +144,12 @@
 
 .portal-object__label {
   position: static;
-  color: rgba(244, 247, 251, 0.94) !important;
+  color: rgba(250, 252, 255, 0.98) !important;
   font-size: clamp(20px, 2.8vw, 30px);
   line-height: 1;
-  letter-spacing: 0.12em;
+  letter-spacing: 0;
   opacity: 1 !important;
+  pointer-events: none;
   transform: none;
 }
 

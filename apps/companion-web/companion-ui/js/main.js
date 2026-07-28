@@ -40,7 +40,7 @@ import { mountMainSceneShell } from './features/main-scene/main-scene-shell.js';
 import { createMainSceneView } from './features/main-scene/main-scene-view.js';
 import { createDomRegistry } from './dom-registry.js';
 
-mountMainSceneShell(document.querySelector('#luminous-scene'));
+const mainSceneShell = mountMainSceneShell(document.querySelector('#luminous-scene'));
 
 const dom = createDomRegistry(document);
 
@@ -484,6 +484,7 @@ function main() {
     runtime.destroy();
     sceneEnvironment.destroy();
     sceneParallax.destroy();
+    mainSceneShell.destroy();
   }, { once: true });
 }
 

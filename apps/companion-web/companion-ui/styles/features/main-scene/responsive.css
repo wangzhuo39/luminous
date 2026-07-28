@@ -56,63 +56,91 @@
     height: 3px;
   }
 
+  .scene-menu {
+    top: 50px;
+    width: min(236px, calc(100vw - 32px));
+    padding: 10px;
+  }
+
   .portal-btn,
   .portal-top-left,
   .portal-mid-left,
   .portal-top-right,
   .portal-bottom-right {
-    width: 76px;
-    height: 103px;
+    width: 82px;
+    height: 112px;
     gap: 8px;
   }
 
-  .portal-top-left { top: 13.6%; left: 1.5%; }
-  .portal-mid-left { top: 27.2%; left: 1.5%; }
-  .portal-bottom-right { top: 14.8%; right: 1.5%; }
-  .portal-top-right { top: 28.4%; right: 1.5%; }
+  .portal-top-left { top: 14%; left: 1.5%; }
+  .portal-mid-left { top: 27.8%; left: 1.5%; }
+  .portal-bottom-right { top: 14%; right: 1.5%; }
+  .portal-top-right { top: 27.8%; right: 1.5%; }
 
   .portal-object__shape,
   .portal-time-shard,
   .portal-memory-crystal,
   .portal-frost-pull,
   .portal-letter {
-    width: 60px;
-    height: 60px;
+    width: 68px;
+    height: 68px;
   }
 
   .portal-object__shape::before {
     inset: -5px;
   }
 
+  .portal-entry-art {
+    transform: scale(1.16);
+    filter:
+      brightness(1.32)
+      saturate(1.1)
+      contrast(1.04)
+      drop-shadow(0 6px 10px rgba(0, 5, 24, 0.38))
+      drop-shadow(0 0 8px rgba(135, 194, 255, 0.34));
+  }
+
+  .portal-time-shard .portal-entry-art {
+    transform: scale(0.91);
+  }
+
   .portal-object__label {
+    width: 100%;
+    min-height: 20px;
+    left: auto !important;
+    right: auto !important;
     font-size: 16px;
+    line-height: 20px;
+    text-align: center;
+    text-shadow: 0 2px 8px rgba(0, 3, 14, 0.98), 0 0 8px rgba(125, 180, 255, 0.3);
+    transform: none !important;
   }
 
   #dialogue-stream {
     top: 45.7%;
-    left: 7%;
-    width: 86%;
-    height: 26.2%;
-    padding-left: 24px;
+    left: 3%;
+    width: 92%;
+    height: 30.8%;
+    padding-left: 20px;
     gap: 10px;
   }
 
   #dialogue-stream .user-message {
-    font-size: clamp(13px, 3.9vw, 16px);
+    font-size: clamp(12px, 3.6vw, 14px);
   }
 
   #dialogue-stream .assistant-message {
-    font-size: clamp(16px, 4.8vw, 20px);
-    line-height: 1.78;
+    font-size: clamp(15px, 4.4vw, 18px);
+    line-height: 1.74;
   }
 
   .companion-status-panel {
-    top: 73.8%;
+    top: 76.5%;
     left: 3.8%;
     width: 92.4%;
-    height: 12.5%;
-    padding: 2% 1%;
-    border-radius: 28px;
+    height: 15.3%;
+    padding: 0;
+    border-radius: 0;
   }
 
   .companion-status-item {
@@ -143,10 +171,10 @@
   }
 
   .input-surface-container {
-    bottom: max(2.1%, env(safe-area-inset-bottom));
+    bottom: max(0.6%, env(safe-area-inset-bottom));
     left: 3.8%;
     width: 92.4%;
-    height: 8.1%;
+    height: 5.3%;
     gap: 8px;
   }
 
@@ -161,8 +189,9 @@
   }
 
   #send-button {
-    width: 62px;
-    height: 62px;
+    top: 0;
+    width: 54px;
+    height: 54px;
   }
 
   #send-button .icon-container {

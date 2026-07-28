@@ -8,20 +8,18 @@ These PNG assets are the painted decoration layer for the main companion scene. 
 | `status-heart-orb.png` | Sapphire heart and pulse orb for the heartbeat status | 384 × 384 |
 | `status-rain-orb.png` | Sapphire umbrella and rain orb for the activity status | 384 × 384 |
 | `status-quiet-orb.png` | Sapphire crescent and ripple orb for the mood status | 384 × 384 |
-| `portal-today-orb.png` | Extracted celestial crescent portal for 今日 | 384 × 384 |
-| `portal-memory-orb.png` | Extracted faceted memory crystal portal for 记忆 | 384 × 384 |
-| `portal-letter-orb.png` | Extracted luminous envelope portal for 来信 | 384 × 384 |
-| `portal-heart-orb.png` | Extracted lotus-heart portal for 心迹 | 384 × 384 |
+| `today.png` | Transparent celestial glass orb with a faceted crescent for 今日 | 1024 × 1024 |
+| `memory.png` | Transparent celestial glass orb with a faceted memory crystal for 记忆 | 1024 × 1024 |
+| `letter.png` | Transparent celestial glass orb with a crystal envelope for 来信 | 1024 × 1024 |
+| `heart.png` | Transparent celestial glass orb with a seven-petal crystal lotus for 心迹 | 1024 × 1024 |
 | `input-frame-glass.png` | Water-glass chat input frame with an integrated droplet socket | 1600 × 359 |
 | `send-button-crystal.png` | Crystal paper-plane send button artwork | 512 × 512 |
 
 ## Production method
 
-- Generated with the built-in image generation tool using `docs/front_design/main/ui.png` as the visual-language reference.
-- The four portal PNGs are local crops derived from the supplied `ui.png` reference after the built-in generation service became unavailable; they preserve the target's original orbital glass and crystal details while the surrounding square is feathered to transparency.
-- Generated on a flat green chroma background, then converted locally to RGBA PNG with the imagegen chroma-key helper.
-- Source chroma images are intentionally excluded; only the validated transparent production assets live here.
-- Production files are downsampled with Lanczos filtering to a high-DPI web ceiling; large chroma-key generation sources are not shipped to the browser.
+- The status and composer artwork was generated with the built-in image generation tool using `docs/front_design/main/ui.png` as the visual-language reference.
+- `today.png` is the approved transparent style master. The remaining portals were generated through the configured `gpt-image-1.5` API with portal-specific production prompts matched to its glass, glow, scale, and orbital language.
+- All four production portal files are validated RGBA PNGs with transparent corners and partial alpha retained for glass edges, glow falloff, star tracks, and particles.
 - Existing SVG assets under `assets/frames/` and `assets/icons/` remain lightweight fallback and state-icon resources.
 
 ## Prompt intent

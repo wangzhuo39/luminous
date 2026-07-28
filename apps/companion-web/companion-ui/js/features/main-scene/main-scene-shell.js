@@ -1,3 +1,5 @@
+import { initSceneBackgroundMenu } from './scene-background.js';
+
 const headerMarkup = `
   <header class="top-scene-header" aria-label="场景与陪伴者状态">
     <div class="scene-clock-block">
@@ -13,9 +15,22 @@ const headerMarkup = `
         <p class="companion-name">叶筝</p>
         <p class="companion-presence"><span aria-hidden="true"></span>在这里</p>
       </div>
-      <button type="button" class="scene-more" aria-label="更多选项">
+      <button type="button" class="scene-more" aria-label="更多选项" aria-haspopup="true" aria-expanded="false" aria-controls="scene-menu" data-hook="scene-menu-trigger">
         <span></span><span></span><span></span>
       </button>
+      <div id="scene-menu" class="scene-menu" data-hook="scene-menu" hidden>
+        <p class="scene-menu__title">场景背景</p>
+        <div class="scene-background-options" role="radiogroup" aria-label="选择场景背景">
+          <button type="button" class="scene-background-option scene-background-option--quiet" role="radio" aria-checked="true" data-background-id="quiet-night">
+            <span class="scene-background-option__preview" aria-hidden="true"></span>
+            <span>静夜窗前</span>
+          </button>
+          <button type="button" class="scene-background-option scene-background-option--crystal" role="radio" aria-checked="false" data-background-id="crystal-sanctuary">
+            <span class="scene-background-option__preview" aria-hidden="true"></span>
+            <span>冰晶圣殿</span>
+          </button>
+        </div>
+      </div>
     </div>
   </header>
 `;
@@ -85,7 +100,7 @@ function bindPortalArtworkFallback(scene) {
 }
 
 export function mountMainSceneShell(scene) {
-  if (!scene) return;
+  if (!scene) return { destroy() {} };
 
   if (!scene.querySelector('.top-scene-header')) {
     const background = scene.querySelector('.scene-background');
@@ -99,4 +114,5 @@ export function mountMainSceneShell(scene) {
 
   bindStatusArtworkFallback(scene);
   bindPortalArtworkFallback(scene);
+  return initSceneBackgroundMenu(scene);
 }

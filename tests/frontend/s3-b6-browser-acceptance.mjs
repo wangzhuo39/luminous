@@ -31,6 +31,14 @@ function errorsFor(page, allowed = () => false) {
   return errors;
 }
 
+function browserLocalDate(page) {
+  return page.evaluate(() => {
+    const date = new Date();
+    const pad = (value) => String(value).padStart(2, '0');
+    return `${String(date.getFullYear()).padStart(4, '0')}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  });
+}
+
 async function fixtureDesktop() {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const page = await context.newPage();
@@ -195,6 +203,7 @@ async function apiGeneratedPatchAndDelete() {
 
   await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
   await page.locator('body[data-app-status="ready"]:not([data-js-loading])').waitFor();
+  const expectedDraftDate = await browserLocalDate(page);
   await openToday(page);
   await expandLifeFlow(page);
   await page.getByRole('button', { name: '日记', exact: true }).click();
@@ -217,7 +226,7 @@ async function apiGeneratedPatchAndDelete() {
   await page.getByText('今天的思绪，也可以在这里安放').waitFor();
   assert.deepEqual(requests, [
     { method: 'GET', path: '/api/diary-entries?limit=100' },
-    { method: 'POST_DRAFT', path: '/api/diary-entries/draft', body: { date: '2026-07-26' } },
+    { method: 'POST_DRAFT', path: '/api/diary-entries/draft', body: { date: expectedDraftDate } },
     { method: 'PATCH', path: '/api/diary-entries/server-secret-diary-42', body: {
       date: '2026-07-26', title: '今日回顾', body: '- 一件安静的小事\n- 一束光', status: 'saved',
     } },
@@ -247,6 +256,7 @@ async function apiManualError() {
   });
   await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
   await page.locator('body[data-app-status="ready"]:not([data-js-loading])').waitFor();
+  const expectedDiaryDate = await browserLocalDate(page);
   await openToday(page);
   await expandLifeFlow(page);
   await page.getByRole('button', { name: '日记', exact: true }).click();
@@ -262,7 +272,7 @@ async function apiManualError() {
     node.scrollIntoView({ block: 'nearest' });
   });
   assert.deepEqual(requests, [{
-    date: '2026-07-26', title: '  保留标题空白  ', body: '  保留正文空白  ', status: 'saved',
+    date: expectedDiaryDate, title: '  保留标题空白  ', body: '  保留正文空白  ', status: 'saved',
   }]);
   assert.equal(await page.locator('[data-hook="diary-title"]').inputValue(), '  保留标题空白  ');
   assert.equal(await page.locator('[data-hook="diary-body"]').inputValue(), '  保留正文空白  ');

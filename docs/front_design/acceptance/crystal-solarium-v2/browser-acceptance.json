@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-26T12:29:30.901Z",
+  "generatedAt": "2026-07-28T15:19:36.760Z",
   "results": [
     {
       "name": "desktop",
@@ -8,7 +8,7 @@
       "scene": {
         "solarPhase": "dawn",
         "environmentTone": "calm",
-        "sceneBackground": "radial-gradient(36% 32% at 50% 24%, rgba(225, 242, 238, 0.22), rgba(0, 0, 0, 0) 74%), radial-gradient(85% 54% at 50% 112%, rgba(222, 178, 144, 0.13), rgba(0, 0, 0, 0) 72%), linear-gradient(162deg, rgb(10, 24, 34) 0%, rgb(24, 51, 66) 48%, rgb(16, 35, 45) 78%, rgb(3, 9, 15) 100%)",
+        "sceneBackground": "radial-gradient(circle at 50% 20%, rgba(32, 83, 155, 0.22), rgba(0, 0, 0, 0) 42%), none",
         "rayFocus": "0.56",
         "breathPeriod": "9.2s",
         "decorationHidden": "true",
@@ -17,16 +17,37 @@
         "architectureOpacity": 1,
         "vaultPathCount": 15,
         "vaultFrameStroke": "url(\"#vault-edge-light\")",
-        "todayShapeBackground": "linear-gradient(112deg, rgba(245, 254, 255, 0.12), rgba(0, 0, 0, 0) 34%, rgba(0, 0, 0, 0) 72%, rgba(154, 210, 224, 0.07)), none",
-        "todayShapeClip": "polygon(14% 0px, 100% 8%, 92% 91%, 67% 100%, 3% 83%, 0px 16%)",
-        "memoryFacetCount": 2,
+        "todayShapeBackground": "none",
+        "todayShapeClip": "inset(-20%)",
+        "portalArtwork": [
+          {
+            "src": "assets/generated/today.png",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "src": "assets/generated/memory.png",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "src": "assets/generated/heart.png",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "src": "assets/generated/letter.png",
+            "width": 1024,
+            "height": 1024
+          }
+        ],
         "privacyShapeFilter": "blur(14px) saturate(0.82)",
-        "letterShapeClip": "polygon(4% 0px, 96% 5%, 100% 88%, 84% 100%, 0px 91%)",
+        "letterShapeClip": "inset(-20%)",
         "raysBlend": "screen",
         "prismFilter": "blur(9px) saturate(1.22)",
         "prismClip": "polygon(47% 0px, 100% 23%, 86% 83%, 55% 100%, 5% 72%, 0px 18%)",
-        "inputFilter": "blur(17px) saturate(1.16)",
-        "inputBorderTop": "rgba(235, 250, 255, 0.42)",
+        "inputFilter": "saturate(0.74) brightness(1.05) drop-shadow(rgba(183, 213, 246, 0.18) 0px 0px 7px)",
+        "inputBorderTop": "rgba(226, 235, 247, 0.58)",
         "horizontalOverflow": 0
       },
       "dialogMaterial": {
@@ -37,11 +58,11 @@
         "radius": "20px"
       },
       "memoryMaterial": {
-        "width": 589,
+        "width": 640,
         "clip": "polygon(9% 0px, 78% 4%, 100% 24%, 92% 79%, 72% 100%, 13% 92%, 0px 63%, 3% 18%)"
       },
       "outboxMaterial": {
-        "right": 111,
+        "right": 101,
         "clip": "polygon(1% 0px, 96% 4%, 100% 88%, 91% 100%, 0px 94%)"
       },
       "privacyMaterial": {
@@ -55,21 +76,40 @@
     {
       "name": "mobile",
       "passed": true,
-      "screenshots": 2,
+      "screenshots": 4,
+      "menuLayout": {
+        "right": 374,
+        "viewportWidth": 390,
+        "optionCount": 2
+      },
+      "selectedBackground": {
+        "id": "crystal-sanctuary",
+        "stored": "crystal-sanctuary",
+        "image": "url(\"http://127.0.0.1:8000/assets/backgroundv2.png\")"
+      },
       "mobile": {
         "dialogBottom": 844,
         "viewportHeight": 844,
         "dialogRadius": "24px",
         "prismRightDisplay": "none",
-        "inputRadius": "26px",
+        "inputRadius": "999px",
         "keyboardState": "",
         "horizontalOverflow": 0,
         "portalTops": [
-          542,
-          584,
-          552,
-          590
-        ]
+          118,
+          235,
+          235,
+          118
+        ],
+        "dialogueStatusGap": 0,
+        "statusInputGap": 19,
+        "inputHeight": 45,
+        "dialogueLeft": 12,
+        "dialogueBackground": "radial-gradient(circle, rgba(236, 244, 255, 0.94) 0px, rgba(236, 244, 255, 0.94) 1px, rgba(144, 184, 232, 0.58) 2px, rgba(0, 0, 0, 0) 3px), radial-gradient(circle, rgba(245, 249, 255, 0.98) 0px, rgba(245, 249, 255, 0.98) 2px, rgba(151, 193, 238, 0.62) 3px, rgba(0, 0, 0, 0) 4px), radial-gradient(circle, rgba(231, 241, 253, 0.9) 0px, rgba(231, 241, 253, 0.9) 1px, rgba(135, 179, 229, 0.5) 2px, rgba(0, 0, 0, 0) 3px), linear-gradient(rgba(0, 0, 0, 0), rgba(177, 216, 251, 0.92) 8%, rgb(244, 249, 255) 51%, rgba(153, 201, 243, 0.88) 92%, rgba(0, 0, 0, 0)), linear-gradient(90deg, rgba(0, 0, 0, 0), rgba(124, 188, 244, 0.3), rgba(0, 0, 0, 0))",
+        "dialogueBackgroundSize": "7px 7px, 9px 9px, 7px 7px, 3px 100%, 11px 100%",
+        "dialogueScrollbarWidth": "none",
+        "dialogueMaskImage": "linear-gradient(rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.24) 12%, rgba(0, 0, 0, 0.58) 30%, rgba(0, 0, 0, 0.86) 46%, rgb(0, 0, 0) 62%, rgb(0, 0, 0) 100%)",
+        "assistantFontSize": 17.16
       }
     },
     {

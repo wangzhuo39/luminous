@@ -14,57 +14,65 @@
   display: flex;
   flex: none;
   flex-direction: column;
-  gap: clamp(18px, 2.2vh, 32px);
+  gap: clamp(20px, 2.45vh, 35px);
   overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   scroll-padding-block: 18px;
   color: var(--main-ui-white);
   font-family: var(--main-ui-serif);
-  mask-image: linear-gradient(180deg, transparent 0, #000 5%, #000 92%, transparent 100%);
-  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 5%, #000 92%, transparent 100%);
+  background:
+    radial-gradient(circle, rgba(236, 244, 255, 0.94) 0 1px, rgba(144, 184, 232, 0.58) 2px, transparent 3px) 9px 18% / 7px 7px no-repeat,
+    radial-gradient(circle, rgba(245, 249, 255, 0.98) 0 2px, rgba(151, 193, 238, 0.62) 3px, transparent 4px) 9px 43% / 9px 9px no-repeat,
+    radial-gradient(circle, rgba(231, 241, 253, 0.9) 0 1px, rgba(135, 179, 229, 0.5) 2px, transparent 3px) 9px 68% / 7px 7px no-repeat,
+    linear-gradient(180deg, transparent, rgba(177, 216, 251, 0.92) 8%, #f4f9ff 51%, rgba(153, 201, 243, 0.88) 92%, transparent) 7px 0 / 3px 100% no-repeat,
+    linear-gradient(90deg, transparent, rgba(124, 188, 244, 0.3), transparent) 3px 0 / 11px 100% no-repeat;
+  mask-image: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(0, 0, 0, 0.24) 12%,
+    rgba(0, 0, 0, 0.58) 30%,
+    rgba(0, 0, 0, 0.86) 46%,
+    #000 62%,
+    #000 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(0, 0, 0, 0.24) 12%,
+    rgba(0, 0, 0, 0.58) 30%,
+    rgba(0, 0, 0, 0.86) 46%,
+    #000 62%,
+    #000 100%
+  );
+}
+
+#dialogue-stream::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 #dialogue-stream::before {
-  position: absolute;
-  top: 2%;
-  bottom: 2%;
-  left: 4px;
-  z-index: 0;
-  width: 1px;
-  height: auto;
-  content: "";
-  background: linear-gradient(180deg, transparent, rgba(121, 180, 255, 0.8) 12%, rgba(213, 232, 255, 0.94) 54%, rgba(84, 146, 255, 0.8) 86%, transparent);
-  box-shadow: 0 0 9px rgba(89, 151, 255, 0.7);
-  filter: none;
+  display: none;
 }
 
 #dialogue-stream::after {
-  position: absolute;
-  top: 42%;
-  left: -1px;
-  z-index: 1;
-  width: 11px;
-  height: 11px;
-  content: "";
-  background: #e7f3ff;
-  border: 1px solid #82b8ff;
-  box-shadow:
-    0 0 0 6px rgba(87, 146, 255, 0.1),
-    0 0 18px rgba(96, 165, 255, 0.9),
-    0 66px 0 -3px #77aaff,
-    0 -92px 0 -3px #8ab9ff,
-    0 164px 0 -4px rgba(121, 180, 255, 0.9),
-    0 -174px 0 -4px rgba(121, 180, 255, 0.82);
-  clip-path: polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%);
+  display: none;
 }
 
 #dialogue-stream .message {
   position: relative;
+  z-index: 1;
   flex: none;
   width: 100%;
   padding: 0;
   background: none;
   border: 0;
-  text-shadow: 0 3px 14px rgba(0, 4, 15, 0.98), 0 0 24px rgba(0, 6, 19, 0.64);
+  text-shadow:
+    0 1px 2px rgba(0, 2, 10, 0.98),
+    0 3px 9px rgba(0, 3, 13, 0.92),
+    0 0 18px rgba(0, 4, 14, 0.76);
   transform: none;
 }
 
@@ -73,19 +81,19 @@
 }
 
 #dialogue-stream .user-message {
-  color: rgba(202, 216, 238, 0.5);
+  color: rgba(213, 224, 241, 0.58);
   font-size: clamp(18px, 2.8vw, 29px);
-  line-height: 1.45;
-  letter-spacing: 0.06em;
+  line-height: 1.55;
+  letter-spacing: 0;
 }
 
 #dialogue-stream .assistant-message {
-  color: var(--main-ui-white);
+  color: rgba(248, 250, 255, 0.98);
   font-size: clamp(22px, 3.25vw, 34px);
-  line-height: 2.13;
-  letter-spacing: 0.025em;
+  line-height: 2.28;
+  letter-spacing: 0;
 }
 
 #dialogue-stream .user-message:last-child {
-  color: rgba(194, 210, 235, 0.34);
+  color: rgba(205, 218, 238, 0.43);
 }
