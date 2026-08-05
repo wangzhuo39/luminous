@@ -587,7 +587,6 @@
         </div>
       </div>
     </dialog>
-
     <dialog id="privacy-overlay" class="luminous-dialog" aria-labelledby="privacy-title" data-space="privacy">
       <div class="dialog-content">
         <header class="silent-space-header">
@@ -604,13 +603,14 @@
           <fieldset class="privacy-quiet-fieldset"><legend>安静时段</legend><label>从<input type="time" data-hook="privacy-quiet-start"></label><span aria-hidden="true">到</span><label>至<input type="time" data-hook="privacy-quiet-end"></label></fieldset>
           <button class="silent-button silent-button--quiet privacy-save" type="submit" data-hook="privacy-save">维持现状</button>
         </form>
+        <section class="companion-settings-section" aria-labelledby="companion-settings-title"><div class="companion-settings-heading"><div><h3 id="companion-settings-title">连接与伴侣设定</h3><p>使用你自己的 OpenAI-compatible LLM。API key 只保存在服务端，不会回显到页面。</p></div><p class="companion-connection-state" data-hook="companion-connection-state"></p></div><p class="silent-state" data-hook="companion-settings-status" aria-live="polite"></p><form class="companion-settings-form" data-hook="companion-settings-form" hidden><label class="companion-field companion-field--wide" for="companion-base-url"><span>API 地址</span><input id="companion-base-url" class="crystal-input" type="url" inputmode="url" maxlength="2048" placeholder="https://api.example.com/v1" data-hook="companion-base-url"></label><label class="companion-field companion-field--wide" for="companion-api-key"><span>API key</span><input id="companion-api-key" class="crystal-input" type="password" maxlength="4096" autocomplete="new-password" spellcheck="false" data-hook="companion-api-key"><small data-hook="companion-key-state"></small></label><label class="companion-field companion-field--wide" for="companion-model"><span>模型</span><input id="companion-model" class="crystal-input" maxlength="256" placeholder="gpt-5-mini" data-hook="companion-model"></label><label class="companion-field" for="companion-temperature"><span>Temperature</span><input id="companion-temperature" class="crystal-input" type="number" min="0" max="2" step="0.1" required data-hook="companion-temperature"></label><label class="companion-field" for="companion-max-tokens"><span>最大输出 tokens</span><input id="companion-max-tokens" class="crystal-input" type="number" min="1" max="32768" step="1" required data-hook="companion-max-tokens"></label><label class="companion-field companion-field--wide" for="companion-instructions"><span>伴侣 prompt</span><textarea id="companion-instructions" class="crystal-textarea companion-instructions" maxlength="12000" rows="7" placeholder="描述伴侣的人格、称呼、说话方式、边界与相处偏好。留空则使用默认设定。" data-hook="companion-instructions"></textarea><small>这段内容只控制伴侣角色与表达；运行时安全边界和记忆上下文仍会保留。</small></label><button class="silent-button silent-button--quiet companion-settings-save" type="submit" data-hook="companion-settings-save">已是当前设定</button></form></section>
         <section class="privacy-install-section" data-hook="install-section" aria-labelledby="install-title" hidden>
           <div>
             <h3 id="install-title">安置温室</h3>
             <p>让这束光静止在你的设备里。离线时可看见温室的轮廓，回信仍需等待网络恢复。</p>
           </div>
           <button type="button" class="silent-button silent-button--quiet install-button" data-hook="install-button">留下光印</button>
-        </section>
+        </section><section class="privacy-install-section" data-hook="native-notification-section" aria-labelledby="native-notification-title" hidden><div><h3 id="native-notification-title">实时陪伴</h3><p data-hook="native-notification-status">提醒会先保存在 App 内。</p></div><button type="button" class="silent-button silent-button--quiet install-button" data-hook="native-notification-button">开启 Android 通知</button></section><section class="privacy-install-section" data-hook="auth-logout-section" aria-labelledby="auth-logout-title"><div><h3 id="auth-logout-title">退出此设备</h3><p data-hook="auth-logout-status">会同时停止这个会话绑定的远程通知。</p></div><button type="button" class="silent-button silent-button--ghost install-button" data-hook="auth-logout">安全退出</button></section>
       </div>
     </dialog>
   </div>

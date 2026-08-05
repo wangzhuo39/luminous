@@ -31,6 +31,9 @@ function harness(fetchImpl, { online = true } = {}) {
     '[data-hook="auth-code"]': new FakeElement(),
     '[data-hook="auth-submit"]': new FakeElement(),
     '[data-hook="auth-error"]': new FakeElement(),
+    '[data-hook="auth-logout-section"]': new FakeElement(),
+    '[data-hook="auth-logout"]': new FakeElement(),
+    '[data-hook="auth-logout-status"]': new FakeElement(),
   };
   const events = new EventTarget();
   let reloads = 0;
@@ -54,6 +57,9 @@ function harness(fetchImpl, { online = true } = {}) {
     input: elements['[data-hook="auth-code"]'],
     submit: elements['[data-hook="auth-submit"]'],
     error: elements['[data-hook="auth-error"]'],
+    logoutSection: elements['[data-hook="auth-logout-section"]'],
+    logout: elements['[data-hook="auth-logout"]'],
+    logoutStatus: elements['[data-hook="auth-logout-status"]'],
     documentRef,
     windowRef,
     reloads: () => reloads,
@@ -168,5 +174,48 @@ test('an expired running session requires login and reloads after success', asyn
   ui.input.value = 'invite-code';
   ui.form.dispatchEvent(new Event('submit', { cancelable: true }));
   await flush();
+  assert.equal(ui.reloads(), 1);
+});
+
+test('logout revokes the server session, clears transient data, and reloads', async () => {
+  const calls = [];
+  const ui = harness(async (path, options = {}) => {
+    calls.push([path, options.method ?? 'GET']);
+    return response(200);
+  });
+  let clears = 0;
+  let realtimeStops = 0;
+  ui.windowRef.sessionStorage = { clear() { clears += 1; } };
+  ui.windowRef.LuminousNative = { async disableRealtime() { realtimeStops += 1; } };
+  const auth = initAuthGate({
+    runtimeMode: 'api',
+    documentRef: ui.documentRef,
+    windowRef: ui.windowRef,
+  });
+  await auth.ready;
+  auth.markStarted();
+
+  ui.logout.dispatchEvent(new Event('click', { cancelable: true }));
+  await flush();
+
+  assert.deepEqual(calls, [['/api/auth/session', 'GET'], ['/api/auth/logout', 'POST']]);
+  assert.equal(realtimeStops, 1);
+  assert.equal(clears, 1);
+  assert.equal(ui.reloads(), 1);
+  assert.equal(ui.body.dataset.authStatus, 'checking');
+});
+
+test('logout revokes the server session when no native bridge is available', async () => {
+  const calls = [];
+  const ui = harness(async (path) => { calls.push(path); return response(200); });
+  const auth = initAuthGate({
+    runtimeMode: 'api',
+    documentRef: ui.documentRef,
+    windowRef: ui.windowRef,
+  });
+  await auth.ready;
+
+  assert.equal(await auth.logout(), true);
+  assert.deepEqual(calls, ['/api/auth/session', '/api/auth/logout']);
   assert.equal(ui.reloads(), 1);
 });

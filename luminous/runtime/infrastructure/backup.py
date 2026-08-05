@@ -6,6 +6,7 @@ import json
 import shutil
 import sqlite3
 import uuid
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -31,18 +32,22 @@ def create_backup(data_dir: Path, backup_root: Path, *, now: datetime | None = N
     try:
         for source_path in databases:
             target_path = partial / source_path.name
-            with sqlite3.connect(source_path) as source, sqlite3.connect(target_path) as target:
+            with closing(sqlite3.connect(source_path)) as source, closing(sqlite3.connect(target_path)) as target:
                 source.backup(target)
+                target.commit()
+            target_path.chmod(0o600)
             _assert_integrity(target_path)
             files.append({
                 "name": target_path.name,
                 "size": target_path.stat().st_size,
                 "sha256": _sha256(target_path),
             })
-        (partial / "manifest.json").write_text(
+        manifest_path = partial / "manifest.json"
+        manifest_path.write_text(
             json.dumps({"created_at": now.isoformat(), "files": files}, indent=2) + "\n",
             encoding="utf-8",
         )
+        manifest_path.chmod(0o600)
         partial.rename(destination)
     except Exception:
         shutil.rmtree(partial, ignore_errors=True)
@@ -57,23 +62,47 @@ def restore_backup(backup_dir: Path, data_dir: Path, *, require_empty: bool = Tr
     files = manifest.get("files", [])
     if not isinstance(files, list) or not files:
         raise ValueError("backup manifest contains no databases")
-    data_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-    existing = list(data_dir.iterdir())
+    existing = list(data_dir.iterdir()) if data_dir.exists() else []
     if require_empty and existing:
         raise ValueError("restore target must be empty")
-    restored: list[Path] = []
+    validated: list[tuple[str, Path]] = []
     for record in files:
         name = Path(str(record["name"])).name
         source_path = backup_dir / name
         if _sha256(source_path) != record.get("sha256"):
             raise ValueError(f"backup checksum mismatch: {name}")
         _assert_integrity(source_path)
-        target_path = data_dir / name
-        with sqlite3.connect(source_path) as source, sqlite3.connect(target_path) as target:
-            source.backup(target)
-        _assert_integrity(target_path)
-        restored.append(target_path)
-    return restored
+        validated.append((name, source_path))
+
+    data_dir.parent.mkdir(parents=True, exist_ok=True)
+    staging = data_dir.parent / f".{data_dir.name}.restore-{uuid.uuid4().hex[:8]}"
+    staging.mkdir(mode=0o700)
+    try:
+        for name, source_path in validated:
+            target_path = staging / name
+            with closing(sqlite3.connect(source_path)) as source, closing(sqlite3.connect(target_path)) as target:
+                source.backup(target)
+                target.commit()
+            target_path.chmod(0o600)
+            _assert_integrity(target_path)
+        if require_empty:
+            if data_dir.exists():
+                data_dir.rmdir()
+            staging.rename(data_dir)
+            staging = None
+            return [data_dir / name for name, _ in validated]
+
+        data_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        data_dir.chmod(0o700)
+        restored: list[Path] = []
+        for name, _ in validated:
+            target_path = data_dir / name
+            (staging / name).replace(target_path)
+            restored.append(target_path)
+        return restored
+    finally:
+        if staging is not None:
+            shutil.rmtree(staging, ignore_errors=True)
 
 
 def prune_backups(backup_root: Path) -> None:
@@ -105,7 +134,7 @@ def prune_backups(backup_root: Path) -> None:
 
 
 def _assert_integrity(path: Path) -> None:
-    with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as connection:
+    with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True)) as connection:
         result = str(connection.execute("PRAGMA integrity_check").fetchone()[0])
     if result != "ok":
         raise ValueError(f"SQLite integrity check failed for {path.name}: {result}")

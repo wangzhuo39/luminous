@@ -51,11 +51,68 @@ function defaultCaption(tone) {
   }[tone];
 }
 
+function boundedNumber(value, fallback = 0) {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.min(1, Math.max(0, value))
+    : fallback;
+}
+
+function recentActivityDetail(lastAssistantAt, conversationCount) {
+  const timestamp = Date.parse(lastAssistantAt);
+  if (Number.isFinite(timestamp)) {
+    const minutes = Math.max(0, Math.round((Date.now() - timestamp) / 60_000));
+    if (minutes < 2) return '刚刚 · 还在听你说';
+    if (minutes < 60) return `${minutes} 分钟前 · 仍在这里`;
+  }
+  return conversationCount > 0 ? `相伴 ${conversationCount} 次对话` : '窗边 · 安静等你';
+}
+
+function adaptCompanionStatus(state, tone) {
+  const energy = boundedNumber(state?.energy, 0.75);
+  const supportNeed = boundedNumber(state?.support_need, 0);
+  const heartRate = Math.round(58 + energy * 18 + supportNeed * 8);
+  const mode = safeText(state?.conversation_mode, 40).toLowerCase();
+  const mood = safeText(state?.mood, 32).toLowerCase();
+  const conversationCount = Number.isInteger(state?.conversation_count)
+    ? Math.max(0, state.conversation_count)
+    : 0;
+  const heartLabel = tone === 'concerned'
+    ? '心跳微紧'
+    : energy < 0.4 ? '心跳舒缓' : energy > 0.82 ? '心跳轻快' : '心跳平稳';
+  const activityLabel = {
+    supportive: '正专心陪你',
+    reflective: '在整理思绪',
+    playful: '想和你聊聊',
+    repair: '在等你靠近',
+  }[mode] || (conversationCount > 0 ? '仍在陪着你' : '正在看雨');
+  const moodLabels = {
+    warm: ['有些温柔', '心里暖着'],
+    gentle: ['有些温柔', '心里暖着'],
+    happy: ['心情明亮', '带着一点笑意'],
+    joyful: ['心情明亮', '带着一点笑意'],
+    anxious: ['有些牵挂', '正在留意你的感受'],
+    concerned: ['有些牵挂', '正在留意你的感受'],
+    tired: ['稍微疲倦', '想慢一点陪你'],
+    quiet: ['有点安静', '心绪轻缓'],
+  };
+  const [moodLabel, moodDetail] = moodLabels[mood]
+    || (tone === 'concerned' ? ['有些担心', '想先陪你稳下来'] : ['有点安静', '心情平静']);
+  return {
+    heartLabel,
+    heartDetail: `${heartRate} 次/分`,
+    activityLabel,
+    activityDetail: recentActivityDetail(state?.last_assistant_at, conversationCount),
+    moodLabel,
+    moodDetail,
+  };
+}
+
 function adaptScene(state, captionCandidate = '') {
   const tone = mapSceneTone(state);
   return {
     caption: safeText(captionCandidate, CAPTION_LIMIT) || defaultCaption(tone),
     tone,
+    status: adaptCompanionStatus(state, tone),
   };
 }
 

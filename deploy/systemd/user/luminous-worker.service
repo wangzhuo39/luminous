@@ -1,0 +1,22 @@
+[Unit]
+Description=Luminous background worker (user service)
+After=network-online.target luminous-api.service
+Wants=network-online.target
+Requires=luminous-api.service
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=/home/wz/luminous
+EnvironmentFile=/home/wz/luminous/.env
+ExecStart=/home/wz/luminous/.venv/bin/luminous-worker --env /home/wz/luminous/.env --interval 60
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,23 @@
+{
+  "appId": "me.havilume.luminous",
+  "appName": "栖光",
+  "webDir": "apps/companion-android/dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    },
+    "CapacitorCookies": {
+      "enabled": true
+    },
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_luminous",
+      "iconColor": "#9fc7d8"
+    },
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    }
+  }
+}

@@ -107,3 +107,22 @@ export function adaptSavedNotifications(raw, previous = {}) {
   const source = object(raw);
   return adaptPrivacyResponse({ notifications: source, state: { state: { dnd_until: previous.dndUntil ?? '' } } });
 }
+
+export function adaptCompanionSettings(raw) {
+  const source = object(raw);
+  const llm = object(source.llm);
+  const companion = object(source.companion);
+  const temperature = Number(llm.temperature);
+  const maxTokens = Number.parseInt(llm.max_tokens, 10);
+  return {
+    baseUrl: typeof llm.base_url === 'string' ? llm.base_url.trim().slice(0, 2048) : '',
+    model: text(llm.model, 256),
+    temperature: Number.isFinite(temperature) ? Math.max(0, Math.min(2, temperature)) : 0.7,
+    maxTokens: Number.isInteger(maxTokens) ? Math.max(1, Math.min(32768, maxTokens)) : 768,
+    apiKeyConfigured: llm.api_key_configured === true,
+    configured: llm.configured === true,
+    instructions: typeof companion.instructions === 'string' ? companion.instructions.slice(0, 12000) : '',
+    customized: companion.customized === true,
+    updatedAt: iso(source.updated_at),
+  };
+}

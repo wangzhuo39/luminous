@@ -137,6 +137,46 @@ class CompanionService:
     def update_notification_preferences(self, updates: dict[str, Any]) -> dict[str, object]:
         return public_notifications(self.runtime.update_notification_preferences(updates))
 
+    def companion_settings(self) -> dict[str, object]:
+        return self.runtime.companion_settings()
+
+    def update_companion_settings(self, updates: dict[str, Any]) -> dict[str, object]:
+        return self.runtime.update_companion_settings(updates)
+
+    def register_notification_device(
+        self, payload: dict[str, Any], *, session_digest: str = "",
+    ) -> dict[str, object]:
+        token = payload.get("token", "")
+        platform = payload.get("platform", "android")
+        provider = payload.get("provider", "fcm")
+        installation_id = payload.get("installation_id", "")
+        if not all(isinstance(value, str) for value in (token, platform, provider, installation_id)):
+            raise ValueError("invalid notification device")
+        device = self.runtime.store.upsert_notification_device(
+            token=token, platform=platform.strip().lower(), provider=provider.strip().lower(),
+            installation_id=installation_id, session_digest=session_digest,
+        )
+        return {
+            "registered": True,
+            "device": {
+                "device_id": str(device.get("device_id", "")),
+                "platform": str(device.get("platform", "")),
+                "provider": str(device.get("provider", "")),
+                "status": str(device.get("status", "")),
+                "updated_at": str(device.get("updated_at", "")),
+            },
+        }
+
+    def unregister_notification_device(
+        self, device_id: str, *, session_digest: str = "",
+    ) -> dict[str, object]:
+        return {
+            "unregistered": self.runtime.store.disable_notification_device_by_id(
+                device_id, session_digest=session_digest,
+            ),
+            "device_id": device_id,
+        }
+
     def today(self, *, date: str = "") -> dict[str, object]:
         return public_today(self.runtime.read_today(date=date))
 

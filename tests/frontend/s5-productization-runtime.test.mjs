@@ -124,3 +124,20 @@ test('PWA install appears only after browser eligibility and update waits for co
   assert.equal(reloads, 1);
   controller.destroy();
 });
+
+test('native Android runtime does not register a PWA service worker', async () => {
+  const windowRef = fakeWindow('https://localhost/');
+  windowRef.__LUMINOUS_NATIVE__ = true;
+  const serviceWorker = new EventTarget();
+  let registrations = 0;
+  serviceWorker.register = async () => { registrations += 1; return {}; };
+
+  const controller = initPwaExperience({}, {
+    windowRef,
+    navigatorRef: { serviceWorker, standalone: false, onLine: true },
+  });
+  await controller.ready;
+
+  assert.equal(registrations, 0);
+  controller.destroy();
+});

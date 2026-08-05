@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "luminous"
 version = "0.1.0"
 requires-python = ">=3.11"
-dependencies = ["tqdm>=4.66"]
+dependencies = ["google-auth[requests]>=2.40", "tqdm>=4.66"]
 
 [project.scripts]
 luminous-api = "luminous.runtime.infrastructure.http:main"

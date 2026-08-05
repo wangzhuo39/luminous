@@ -39,8 +39,12 @@ class PromptPackage:
 
 
 class PromptBuilder:
-    def __init__(self, total_char_budget: int = 9000) -> None:
+    def __init__(self, total_char_budget: int = 9000, companion_prompt: str = "") -> None:
         self.total_char_budget = total_char_budget
+        self.companion_prompt = companion_prompt.strip()
+
+    def set_companion_prompt(self, value: str) -> None:
+        self.companion_prompt = value.strip()
 
     def build(
         self,
@@ -90,12 +94,20 @@ class PromptBuilder:
             output_contract,
         ]
         context = _clip("\n".join(context_sections), self.total_char_budget)
+        system_prompts = [SYSTEM_PROMPT]
+        if self.companion_prompt:
+            system_prompts.append(
+                "以下是用户为伴侣设定的角色与表达偏好。在不违反安全要求、现实边界和输出协议的前提下，"
+                f"以这份设定为准：\n\n{_clip(self.companion_prompt, 12000)}"
+            )
         messages: list[Message] = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            *({"role": "system", "content": prompt} for prompt in system_prompts),
             {"role": "system", "content": context},
         ]
-        history_budget = max(1200, self.total_char_budget - len(context) - len(SYSTEM_PROMPT) - len(user_text))
-        messages.extend(_history_messages(history, history_budget))
+        system_chars = sum(len(prompt) for prompt in system_prompts)
+        history_budget = max(1200, self.total_char_budget - len(context) - system_chars - len(user_text))
+        history_messages = _history_messages(history, history_budget)
+        messages.extend(history_messages)
         messages.append({"role": "user", "content": _clip(user_text, 3000)})
 
         return PromptPackage(
@@ -111,7 +123,8 @@ class PromptBuilder:
                 "total_char_budget": self.total_char_budget,
                 "context_chars": len(context),
                 "history_budget": history_budget,
-                "history_count_used": max(0, len(messages) - 3),
+                "history_count_used": len(history_messages),
+                "custom_companion_prompt": bool(self.companion_prompt),
                 "memory_hits_considered": len(memory_hits),
                 "memory_menu_count": len(memory_menu),
                 "expanded_evidence_count": len(expanded_evidence),

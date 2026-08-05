@@ -19,7 +19,9 @@ async function waitForServer(url) {
 
 test('bundled HTTP server serves PWA assets with explicit MIME and hardening headers', async () => {
   const port = 4197;
-  const server = spawn('luminous-api', ['--host', '127.0.0.1', '--port', String(port), '--mock'], {
+  const server = spawn('luminous-api', [
+    '--host', '127.0.0.1', '--port', String(port), '--mock', '--deployment-mode', 'local',
+  ], {
     cwd: projectRoot,
     stdio: 'ignore',
   });

@@ -18,11 +18,24 @@ function renderMessages(dialogueStream, messages) {
   if (wasAtBottom) dialogueStream.scrollTop = dialogueStream.scrollHeight;
 }
 
-export function createMainSceneView({ body, companionFigure, dialogueStream, chatInput }) {
+export function createMainSceneView({ body, scene, companionFigure, dialogueStream, chatInput }) {
+  const statusNodes = {
+    heartLabel: scene?.querySelector('[data-hook="companion-heart-label"]'),
+    heartDetail: scene?.querySelector('[data-hook="companion-heart-detail"]'),
+    activityLabel: scene?.querySelector('[data-hook="companion-activity-label"]'),
+    activityDetail: scene?.querySelector('[data-hook="companion-activity-detail"]'),
+    moodLabel: scene?.querySelector('[data-hook="companion-mood-label"]'),
+    moodDetail: scene?.querySelector('[data-hook="companion-mood-detail"]'),
+  };
   return {
     renderScene(viewModel) {
       companionFigure?.setAttribute('aria-label', viewModel.caption);
       body.dataset.tone = viewModel.tone;
+      Object.entries(statusNodes).forEach(([key, node]) => {
+        if (node && typeof viewModel.status?.[key] === 'string') {
+          node.textContent = viewModel.status[key];
+        }
+      });
     },
 
     renderConversation(viewModel, draft) {

@@ -46,6 +46,24 @@ test('requestJson parses JSON and handles empty success responses', async () => 
   assert.equal(empty, null);
 });
 
+test('mutation requests get one stable idempotency key across a transport retry', async () => {
+  const calls = [];
+  const payload = await requestJson('/api/tasks', {
+    method: 'POST',
+    body: { title: '只创建一次' },
+    dependencies: dependencies(async (_url, options) => {
+      calls.push(options);
+      if (calls.length === 1) throw new TypeError('connection reset');
+      return response({ status: 201, body: '{"ok":true}' });
+    }, { randomUUID: () => 'test-operation-id' }),
+  });
+  assert.deepEqual(payload, { ok: true });
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].headers['Idempotency-Key'], 'luminous-test-operation-id');
+  assert.equal(calls[1].headers['Idempotency-Key'], 'luminous-test-operation-id');
+  assert.equal(calls[0].body, calls[1].body);
+});
+
 test('requestJson safely maps HTTP, malformed JSON and offline failures', async () => {
   await expectKind(requestJson('/api/chat', {
     dependencies: dependencies(async () => response({ status: 503 })),
@@ -104,7 +122,15 @@ test('state adapter reads only state and maps it to restrained presentation', ()
     recent_memories: [{ text: 'secret' }],
     job_count: 99,
   });
-  assert.deepEqual(adapted, { caption: '我在这里。', tone: 'calm' });
+  assert.deepEqual(adapted, {
+    caption: '我在这里。',
+    tone: 'calm',
+    status: {
+      heartLabel: '心跳平稳', heartDetail: '72 次/分',
+      activityLabel: '正在看雨', activityDetail: '窗边 · 安静等你',
+      moodLabel: '有点安静', moodDetail: '心情平静',
+    },
+  });
   assert.doesNotMatch(JSON.stringify(adapted), /secret|thinking|memory|job/i);
 
   assert.equal(adaptStateResponse({
@@ -130,7 +156,15 @@ test('chat adapter keeps only final reply and safe scene presentation', () => {
       role: 'assistant',
       text: '我在，先陪你慢一点。',
     },
-    scene: { caption: '静静听你说。', tone: 'warm' },
+    scene: {
+      caption: '静静听你说。',
+      tone: 'warm',
+      status: {
+        heartLabel: '心跳平稳', heartDetail: '72 次/分',
+        activityLabel: '正在看雨', activityDetail: '窗边 · 安静等你',
+        moodLabel: '有些温柔', moodDetail: '心里暖着',
+      },
+    },
   });
   assert.doesNotMatch(JSON.stringify(adapted), /secret|thinking|action|ledger|prompt|analysis/i);
 });

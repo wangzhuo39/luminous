@@ -1,6 +1,15 @@
 import { AppError } from '../shared/errors.js';
 import { requestJson } from './api-client.js';
 
+const EMPTY_COMPANION_SETTINGS = Object.freeze({
+  llm: Object.freeze({
+    base_url: '', model: '', temperature: 0.7, max_tokens: 768,
+    api_key_configured: false, configured: false,
+  }),
+  companion: Object.freeze({ instructions: '', customized: false }),
+  updated_at: '',
+});
+
 function buildQuery(params) {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -52,10 +61,16 @@ export function createSilentSpacesApi({ request = requestJson } = {}) {
       return Promise.all([
         request('/api/settings/notifications', { signal }),
         request('/api/state', { signal }),
-      ]).then(([notifications, state]) => ({ notifications, state }));
+        request('/api/settings/companion', { signal })
+          .then((companion) => ({ companion, companionUnavailable: false }))
+          .catch(() => ({ companion: EMPTY_COMPANION_SETTINGS, companionUnavailable: true })),
+      ]).then(([notifications, state, result]) => ({ notifications, state, ...result }));
     },
     saveNotifications({ changes, signal }) {
       return request('/api/settings/notifications', { method: 'PATCH', body: changes, signal });
+    },
+    saveCompanionSettings({ changes, signal }) {
+      return request('/api/settings/companion', { method: 'PATCH', body: changes, signal });
     },
   });
 }

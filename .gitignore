@@ -7,6 +7,7 @@ outputs/
 # Local environment and caches
 .env
 .env.*
+.env copy
 !.env.example
 .venv/
 .codegraph/
@@ -17,6 +18,17 @@ __pycache__/
 node_modules/
 test-results/
 playwright-report/
+tmp/
+tests/frontend/8000.png
+tests/frontend/8000mode.png
+apps/companion-android/dist/
+android/.gradle/
+android/local.properties
+android/app/google-services.json
+*.jks
+*.keystore
+android/**/build/
+apps/companion-web/companion-ui/downloads/*.apk
 
 # OS/editor noise
 .DS_Store

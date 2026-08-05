@@ -94,6 +94,21 @@ class CookieAuthHTTPTest(unittest.TestCase):
         )
         self.assertEqual(status, 200, state)
         self.assertTrue((self.config.runtime_data_dir / "runtime.sqlite3").exists())
+        status, device, _ = self.request(
+            "POST",
+            "/api/notification-devices",
+            {
+                "token": "session-bound-fcm-token",
+                "platform": "android",
+                "provider": "fcm",
+                "installation_id": "session-bound-installation",
+            },
+            {"Origin": "https://test.example", "Cookie": cookie},
+        )
+        self.assertEqual(status, 201, device)
+        active_devices = self.server.RequestHandlerClass.service.runtime.store.read_notification_devices()
+        self.assertEqual(len(active_devices), 1)
+        self.assertTrue(active_devices[0]["session_digest"])
 
         self._stop_server()
         self._start_server()
@@ -113,6 +128,11 @@ class CookieAuthHTTPTest(unittest.TestCase):
         )
         self.assertEqual(status, 200)
         self.assertIn("Max-Age=0", headers["Set-Cookie"])
+        disabled_devices = self.server.RequestHandlerClass.service.runtime.store.read_notification_devices(
+            status="disabled",
+        )
+        self.assertEqual(len(disabled_devices), 1)
+        self.assertEqual(disabled_devices[0]["last_error"], "session_logout")
         status, _, _ = self.request(
             "GET",
             "/api/state",

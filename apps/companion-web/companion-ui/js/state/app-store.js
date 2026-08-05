@@ -142,7 +142,25 @@ export function safeScene(scene) {
   }
   const caption = typeof scene.caption === 'string' ? scene.caption.trim().slice(0, 120) : '';
   const tone = VISUAL_TONES.has(scene.tone) ? scene.tone : 'unknown';
-  return { caption, tone };
+  if (!scene.status || typeof scene.status !== 'object') return { caption, tone };
+  const status = scene.status && typeof scene.status === 'object' ? scene.status : {};
+  const statusText = (key, fallback) => (
+    typeof status[key] === 'string' && status[key].trim()
+      ? status[key].trim().slice(0, 80)
+      : fallback
+  );
+  return {
+    caption,
+    tone,
+    status: {
+      heartLabel: statusText('heartLabel', '心跳平稳'),
+      heartDetail: statusText('heartDetail', '72 次/分'),
+      activityLabel: statusText('activityLabel', '正在看雨'),
+      activityDetail: statusText('activityDetail', '窗边 · 雨声轻轻'),
+      moodLabel: statusText('moodLabel', '有点安静'),
+      moodDetail: statusText('moodDetail', '心情平静'),
+    },
+  };
 }
 
 export function getState() {

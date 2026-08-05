@@ -7,12 +7,22 @@ const browserDependencies = {
   isOnline: () => navigator.onLine,
   setTimer: (callback, delay) => window.setTimeout(callback, delay),
   clearTimer: (timerId) => window.clearTimeout(timerId),
+  randomUUID: () => globalThis.crypto?.randomUUID?.()
+    || `fallback-${Date.now()}-${Math.random().toString(16).slice(2)}`,
 };
 
 function assertRelativeApiPath(path) {
   if (typeof path !== 'string' || !path.startsWith('/api/') || path.startsWith('//')) {
     throw new AppError('validation');
   }
+}
+
+export function resolveApiUrl(path, windowRef = typeof window === 'undefined' ? null : window) {
+  assertRelativeApiPath(path);
+  const base = typeof windowRef?.__LUMINOUS_API_BASE__ === 'string'
+    ? windowRef.__LUMINOUS_API_BASE__.trim().replace(/\/$/, '')
+    : '';
+  return base ? `${base}${path}` : path;
 }
 
 export async function requestJson(path, options = {}) {
@@ -53,11 +63,14 @@ export async function requestJson(path, options = {}) {
     ? window.__LUMINOUS_API_TOKEN__.trim()
     : '';
   if (apiToken) headers.Authorization = `Bearer ${apiToken}`;
-  if (options.idempotencyKey) {
-    headers['Idempotency-Key'] = String(options.idempotencyKey).slice(0, 128);
-  }
+  const method = String(options.method ?? 'GET').toUpperCase();
+  const mutation = !['GET', 'HEAD', 'OPTIONS'].includes(method);
+  const idempotencyKey = options.idempotencyKey
+    || (mutation && typeof dependencies.randomUUID === 'function'
+      ? `luminous-${dependencies.randomUUID()}` : '');
+  if (idempotencyKey) headers['Idempotency-Key'] = String(idempotencyKey).slice(0, 128);
   const requestOptions = {
-    method: options.method ?? 'GET',
+    method,
     headers,
     signal: controller.signal,
   };
@@ -68,7 +81,21 @@ export async function requestJson(path, options = {}) {
   }
 
   try {
-    const response = await dependencies.fetchImpl(path, requestOptions);
+    const requestUrl = resolveApiUrl(path);
+    requestOptions.credentials = requestUrl === path ? 'same-origin' : 'include';
+    let response;
+    try {
+      response = await dependencies.fetchImpl(requestUrl, requestOptions);
+    } catch (firstError) {
+      if (
+        !mutation
+        || timedOut
+        || callerCancelled
+        || options.signal?.aborted
+        || dependencies.isOnline() === false
+      ) throw firstError;
+      response = await dependencies.fetchImpl(requestUrl, requestOptions);
+    }
     if (!response.ok) {
       if (response.status === 401 && typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('luminous:auth-required'));

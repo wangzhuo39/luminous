@@ -7,7 +7,9 @@ import {
   deriveEnvironment,
   deriveSolarState,
   initSceneEnvironment,
+  renderSceneClock,
   renderMemoryCrystals,
+  scenePeriodLabel,
 } from '../../apps/companion-web/companion-ui/js/scene-environment.js';
 
 function localTime(hour, minute = 0) {
@@ -50,6 +52,22 @@ test('solar phases follow local-time boundaries', () => {
   assert.equal(deriveSolarState(localTime(17)).phase, 'dusk');
   assert.equal(deriveSolarState(localTime(20)).phase, 'night');
   assert.equal(deriveSolarState(new Date('invalid')).phase, 'night');
+});
+
+test('scene clock renders real local time and matching period', () => {
+  const clock = { textContent: '', attributes: {}, setAttribute(key, value) { this.attributes[key] = value; } };
+  const period = { textContent: '' };
+  const scene = {
+    querySelector(selector) {
+      return selector.includes('scene-clock') ? clock : selector.includes('scene-period') ? period : null;
+    },
+  };
+  assert.equal(renderSceneClock(scene, localTime(18, 7)), '18:07');
+  assert.equal(clock.textContent, '18:07');
+  assert.match(clock.attributes.datetime, /^2026-/);
+  assert.equal(period.textContent, '傍晚');
+  assert.equal(scenePeriodLabel(localTime(7)), '清晨');
+  assert.equal(scenePeriodLabel(localTime(13)), '午后');
 });
 
 test('environment derives bounded visual values from safe aggregate state', () => {

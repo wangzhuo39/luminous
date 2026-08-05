@@ -4,10 +4,13 @@ import hashlib
 import json
 import sqlite3
 import tempfile
+import uuid
 from collections.abc import Iterable
+from contextlib import contextmanager
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Any
+from threading import local
+from typing import Any, Iterator
 
 from luminous.runtime.domain.events import ConversationEvent, make_event
 from luminous.runtime.domain.memory import MemoryHit, MemoryQuery, MemoryRecord, score_memory
@@ -35,6 +38,7 @@ class CompanionRuntimeStore:
         self.memory_path = self.base_dir / "memory.jsonl"
         self.event_path = self.base_dir / "events.jsonl"
         self.outbox_path = self.base_dir / "outbox.jsonl"
+        self._transaction_state = local()
         self._ensure_schema()
 
     @classmethod
@@ -56,7 +60,8 @@ class CompanionRuntimeStore:
         return CompanionState()
 
     def save_state(self, state: CompanionState) -> None:
-        payload = json.dumps(state.to_dict(), ensure_ascii=False)
+        state_payload = state.to_dict()
+        payload = json.dumps(state_payload, ensure_ascii=False)
         self._execute(
             """
             INSERT INTO companion_state (state_key, payload, updated_at)
@@ -65,7 +70,51 @@ class CompanionRuntimeStore:
             """,
             ("default", payload, utc_now_iso()),
         )
-        _write_json_atomic(self.state_path, state.to_dict())
+        if self._active_connection() is not None:
+            self._transaction_state.pending_state_payload = state_payload
+        else:
+            self._write_state_sidecar(state_payload)
+
+    @contextmanager
+    def atomic(self) -> Iterator[None]:
+        """Run store reads and writes on one SQLite transaction.
+
+        Model calls and other slow work should happen before entering this
+        context. Nested store operations reuse the same connection so memory
+        guards, raw messages, events and state either commit together or all
+        roll back.
+        """
+        if self._active_connection() is not None:
+            yield
+            return
+
+        conn = self._connect()
+        committed_state_payload: dict[str, Any] | None = None
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            self._transaction_state.connection = conn
+            self._transaction_state.pending_state_payload = None
+            yield
+            conn.commit()
+            committed_state_payload = self._transaction_state.pending_state_payload
+        except BaseException:
+            conn.rollback()
+            raise
+        finally:
+            self._transaction_state.connection = None
+            self._transaction_state.pending_state_payload = None
+            conn.close()
+
+        if committed_state_payload is not None:
+            self._write_state_sidecar(committed_state_payload)
+
+    def _write_state_sidecar(self, payload: dict[str, Any]) -> None:
+        try:
+            _write_json_atomic(self.state_path, payload)
+        except OSError:
+            # SQLite is authoritative. A compatibility sidecar failure must not
+            # turn an already committed chat turn into a client-visible 500.
+            pass
 
     def append_event(self, event: ConversationEvent) -> None:
         payload = event.to_dict()
@@ -248,37 +297,238 @@ class CompanionRuntimeStore:
             created_at,
             str(payload.get("sent_at", "")),
             str(payload.get("replied_at", "")),
+            int(payload.get("delivery_attempts", 0)),
+            str(payload.get("next_attempt_at", "")),
+            str(payload.get("last_attempt_at", "")),
+            str(payload.get("last_error", "")),
+            str(payload.get("delivered_at", "")),
             json.dumps(payload, ensure_ascii=False),
             idempotency_key,
         )
+        active = self._active_connection()
+        if active is not None:
+            return self._append_outbox_with_connection(
+                active, values=values, idempotency_key=idempotency_key, message_id=message_id,
+            )
         with self._connect() as conn:
+            persisted_id = self._append_outbox_with_connection(
+                conn, values=values, idempotency_key=idempotency_key, message_id=message_id,
+            )
+            conn.commit()
+            return persisted_id
+
+    @staticmethod
+    def _append_outbox_with_connection(
+        conn: sqlite3.Connection,
+        *,
+        values: tuple[Any, ...],
+        idempotency_key: str,
+        message_id: str,
+    ) -> str:
+        existing = conn.execute(
+            "SELECT message_id FROM outbox WHERE idempotency_key = ? OR message_id = ?",
+            (idempotency_key, message_id),
+        ).fetchone()
+        if existing is not None:
+            return str(existing["message_id"])
+        try:
+            conn.execute(
+                """
+                INSERT INTO outbox (
+                    message_id, signal_id, trace_id, channel, draft_text, status, score,
+                    reason, signal_type, anchor_memory_ids_json, created_at, sent_at,
+                    replied_at, delivery_attempts, next_attempt_at, last_attempt_at,
+                    last_error, delivered_at, payload_json, idempotency_key
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                values,
+            )
+        except sqlite3.IntegrityError:
             existing = conn.execute(
                 "SELECT message_id FROM outbox WHERE idempotency_key = ? OR message_id = ?",
                 (idempotency_key, message_id),
             ).fetchone()
             if existing is not None:
                 return str(existing["message_id"])
-            try:
-                conn.execute(
-                    """
-                    INSERT INTO outbox (
-                        message_id, signal_id, trace_id, channel, draft_text, status, score,
-                        reason, signal_type, anchor_memory_ids_json, created_at, sent_at,
-                        replied_at, payload_json, idempotency_key
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    values,
-                )
-                conn.commit()
-            except sqlite3.IntegrityError:
-                existing = conn.execute(
-                    "SELECT message_id FROM outbox WHERE idempotency_key = ? OR message_id = ?",
-                    (idempotency_key, message_id),
-                ).fetchone()
-                if existing is not None:
-                    return str(existing["message_id"])
-                raise
+            raise
         return message_id
+
+    def get_outbox_by_idempotency_key(self, idempotency_key: str) -> dict[str, Any] | None:
+        row = self._fetch_one("SELECT * FROM outbox WHERE idempotency_key = ?", (idempotency_key,))
+        return _row_to_outbox(row) if row is not None else None
+
+    def read_deliverable_outbox(self, *, now: datetime | None = None, limit: int = 20) -> list[dict[str, Any]]:
+        now_iso = utc_now_iso(now)
+        rows = self._fetch_all(
+            """
+            SELECT * FROM outbox
+            WHERE status IN ('drafted', 'queued', 'retrying')
+              AND (next_attempt_at = '' OR next_attempt_at <= ?)
+            ORDER BY created_at ASC, message_id ASC
+            LIMIT ?
+            """,
+            (now_iso, limit),
+        )
+        return [_row_to_outbox(row) for row in rows]
+
+    def claim_deliverable_outbox(
+        self,
+        *,
+        now: datetime | None = None,
+        limit: int = 20,
+        lease_seconds: int = 120,
+    ) -> list[dict[str, Any]]:
+        """Atomically lease due outbox rows to one delivery worker.
+
+        Expired leases are reclaimable so a worker crash cannot strand a
+        notification forever.  The private lease token is only returned to the
+        worker and is never part of the public outbox representation.
+        """
+        now = now or datetime.now(timezone.utc)
+        now_iso = utc_now_iso(now)
+        lease_until = utc_now_iso(now + _seconds_delta(lease_seconds))
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            rows = conn.execute(
+                """
+                SELECT * FROM outbox
+                WHERE (
+                    status IN ('drafted', 'queued', 'retrying')
+                    AND (next_attempt_at = '' OR next_attempt_at <= ?)
+                ) OR (
+                    status = 'delivering'
+                    AND delivery_locked_until != ''
+                    AND delivery_locked_until <= ?
+                )
+                ORDER BY created_at ASC, message_id ASC
+                LIMIT ?
+                """,
+                (now_iso, now_iso, limit),
+            ).fetchall()
+            claimed: list[dict[str, Any]] = []
+            for row in rows:
+                lease_token = f"outbox_lease_{uuid.uuid4().hex}"
+                changed = conn.execute(
+                    """
+                    UPDATE outbox
+                    SET status = 'delivering', delivery_lock_token = ?,
+                        delivery_locked_until = ?
+                    WHERE message_id = ? AND (
+                        (
+                            status IN ('drafted', 'queued', 'retrying')
+                            AND (next_attempt_at = '' OR next_attempt_at <= ?)
+                        ) OR (
+                            status = 'delivering'
+                            AND delivery_locked_until != ''
+                            AND delivery_locked_until <= ?
+                        )
+                    )
+                    """,
+                    (lease_token, lease_until, row["message_id"], now_iso, now_iso),
+                ).rowcount
+                if not changed:
+                    continue
+                updated = conn.execute(
+                    "SELECT * FROM outbox WHERE message_id = ?",
+                    (row["message_id"],),
+                ).fetchone()
+                if updated is not None:
+                    payload = _row_to_outbox(updated)
+                    payload["_delivery_lock_token"] = lease_token
+                    claimed.append(payload)
+            conn.commit()
+        return claimed
+
+    def update_outbox_delivery(
+        self,
+        message_id: str,
+        delivery: dict[str, Any],
+        *,
+        now: datetime | None = None,
+        max_attempts: int = 5,
+        lease_token: str = "",
+    ) -> dict[str, Any] | None:
+        row = self._fetch_one("SELECT * FROM outbox WHERE message_id = ?", (message_id,))
+        if row is None:
+            return None
+        current = _row_to_outbox(row)
+        now = now or datetime.now(timezone.utc)
+        now_iso = utc_now_iso(now)
+        attempted = bool(delivery.get("attempted"))
+        ok = attempted and bool(delivery.get("ok"))
+        delivery_metadata = dict(delivery.get("metadata", {}) or {})
+        permanent_failure = bool(delivery_metadata.get("permanent_failure"))
+        attempts = int(current.get("delivery_attempts", 0)) + (1 if attempted else 0)
+        if ok:
+            status = "delivered"
+            next_attempt_at = ""
+            last_error = ""
+            delivered_at = now_iso
+            sent_at = str(current.get("sent_at") or now_iso)
+        elif attempted:
+            status = "failed" if permanent_failure or attempts >= max_attempts else "retrying"
+            retry_minutes = min(2 ** max(attempts - 1, 0), 60)
+            next_attempt_at = "" if status == "failed" else utc_now_iso(now + timedelta(minutes=retry_minutes))
+            last_error = str(delivery.get("detail") or delivery.get("status") or "delivery_failed")[:400]
+            delivered_at = str(current.get("delivered_at", ""))
+            sent_at = str(current.get("sent_at", ""))
+        else:
+            status = "queued"
+            next_attempt_at = utc_now_iso(now + timedelta(minutes=15))
+            last_error = str(delivery.get("detail") or delivery.get("status") or "delivery_unavailable")[:400]
+            delivered_at = str(current.get("delivered_at", ""))
+            sent_at = str(current.get("sent_at", ""))
+        channel = str(delivery.get("channel") or current.get("channel") or "internal")
+        persisted_payload = dict(current.get("payload", {}) or {})
+        prior_progress = dict(persisted_payload.get("delivery_progress", {}) or {})
+        delivered_device_ids = {
+            str(value) for value in prior_progress.get("delivered_device_ids", []) or [] if value
+        }
+        delivered_device_ids.update(
+            str(value) for value in delivery_metadata.get("delivered_device_ids", []) or [] if value
+        )
+        if delivered_device_ids:
+            persisted_payload["delivery_progress"] = {
+                "delivered_device_ids": sorted(delivered_device_ids),
+            }
+        where_clause = "message_id = ?"
+        params: tuple[Any, ...] = (
+            channel, status, attempts, next_attempt_at,
+            now_iso if attempted else str(current.get("last_attempt_at", "")),
+            last_error, delivered_at, sent_at,
+            json.dumps(persisted_payload, ensure_ascii=False), message_id,
+        )
+        if lease_token:
+            where_clause += " AND status = 'delivering' AND delivery_lock_token = ?"
+            params += (lease_token,)
+        active = self._active_connection()
+        if active is not None:
+            changed = active.execute(
+                f"""
+            UPDATE outbox
+            SET channel = ?, status = ?, delivery_attempts = ?, next_attempt_at = ?,
+                last_attempt_at = ?, last_error = ?, delivered_at = ?, sent_at = ?,
+                payload_json = ?, delivery_lock_token = '', delivery_locked_until = ''
+            WHERE {where_clause}
+                """,
+                params,
+            ).rowcount
+        else:
+            with self._connect() as conn:
+                changed = conn.execute(
+                    f"""
+                UPDATE outbox
+                SET channel = ?, status = ?, delivery_attempts = ?, next_attempt_at = ?,
+                    last_attempt_at = ?, last_error = ?, delivered_at = ?, sent_at = ?,
+                    payload_json = ?, delivery_lock_token = '', delivery_locked_until = ''
+                WHERE {where_clause}
+                    """,
+                    params,
+                ).rowcount
+                conn.commit()
+        if not changed:
+            return None
+        return self.get_outbox_by_idempotency_key(str(current["idempotency_key"]))
 
     def read_memory_threads(self, limit: int | None = None) -> list[dict[str, Any]]:
         rows = self._fetch_all("SELECT * FROM memory_threads ORDER BY updated_at DESC, thread_id ASC")
@@ -652,8 +902,41 @@ class CompanionRuntimeStore:
         )
         return payload
 
+    def read_companion_settings(self, user_scope: str = "default") -> dict[str, Any]:
+        row = self._fetch_one(
+            "SELECT payload_json, updated_at FROM companion_settings WHERE user_scope = ?",
+            (user_scope,),
+        )
+        if row is None:
+            return {}
+        payload = json.loads(row["payload_json"] or "{}")
+        if not isinstance(payload, dict):
+            return {}
+        return {**payload, "updated_at": str(row["updated_at"] or "")}
+
+    def save_companion_settings(
+        self,
+        payload: dict[str, Any],
+        *,
+        user_scope: str = "default",
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        stored = {key: value for key, value in payload.items() if key != "updated_at"}
+        updated_at = utc_now_iso(now)
+        self._execute(
+            """
+            INSERT INTO companion_settings (user_scope, payload_json, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_scope) DO UPDATE SET
+                payload_json = excluded.payload_json,
+                updated_at = excluded.updated_at
+            """,
+            (user_scope, json.dumps(stored, ensure_ascii=False), updated_at),
+        )
+        return {**stored, "updated_at": updated_at}
+
     def count_outbox_since(self, since: datetime, *, signal_type: str | None = None) -> int:
-        sql = "SELECT COUNT(*) AS count FROM outbox WHERE status IN ('drafted', 'sent', 'delivered') AND created_at >= ?"
+        sql = "SELECT COUNT(*) AS count FROM outbox WHERE status IN ('drafted', 'queued', 'retrying', 'sent', 'delivered') AND created_at >= ?"
         params: list[Any] = [utc_now_iso(since)]
         if signal_type:
             sql += " AND signal_type = ?"
@@ -731,6 +1014,176 @@ class CompanionRuntimeStore:
             return None
         return _row_to_outbox(updated)
 
+    def upsert_notification_device(
+        self,
+        *,
+        token: str,
+        platform: str = "android",
+        provider: str = "fcm",
+        installation_id: str = "",
+        session_digest: str = "",
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        clean_token = token.strip()
+        clean_installation_id = installation_id.strip()
+        clean_session_digest = session_digest.strip()
+        if not clean_token or len(clean_token) > 4096:
+            raise ValueError("notification token is required")
+        if len(clean_installation_id) > 160:
+            raise ValueError("installation_id is too long")
+        if platform not in {"android"} or provider not in {"fcm"}:
+            raise ValueError("unsupported notification device")
+        timestamp = utc_now_iso(now)
+        device_id = f"device_{hashlib.sha256(clean_token.encode('utf-8')).hexdigest()[:20]}"
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            if clean_installation_id:
+                conn.execute(
+                    """
+                    UPDATE notification_devices
+                    SET status = 'disabled', last_error = 'token_rotated', updated_at = ?
+                    WHERE installation_id = ? AND token != ? AND status = 'active'
+                    """,
+                    (timestamp, clean_installation_id, clean_token),
+                )
+            conn.execute(
+                """
+                INSERT INTO notification_devices (
+                    device_id, token, platform, provider, installation_id, session_digest,
+                    status, last_error, created_at, updated_at, last_seen_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 'active', '', ?, ?, ?)
+                ON CONFLICT(token) DO UPDATE SET
+                    platform = excluded.platform,
+                    provider = excluded.provider,
+                    installation_id = excluded.installation_id,
+                    session_digest = excluded.session_digest,
+                    status = 'active',
+                    last_error = '',
+                    updated_at = excluded.updated_at,
+                    last_seen_at = excluded.last_seen_at
+                """,
+                (
+                    device_id, clean_token, platform, provider, clean_installation_id, clean_session_digest,
+                    timestamp, timestamp, timestamp,
+                ),
+            )
+            conn.commit()
+        row = self._fetch_one("SELECT * FROM notification_devices WHERE token = ?", (clean_token,))
+        return dict(row) if row is not None else {}
+
+    def read_notification_devices(
+        self,
+        *,
+        status: str = "active",
+        now: datetime | None = None,
+        session_idle_seconds: int = 24 * 60 * 60,
+    ) -> list[dict[str, Any]]:
+        rows = self._fetch_all(
+            """
+            SELECT notification_devices.*,
+                   auth_sessions.last_seen_at AS auth_last_seen_at,
+                   auth_sessions.expires_at AS auth_expires_at,
+                   auth_sessions.revoked_at AS auth_revoked_at
+            FROM notification_devices
+            LEFT JOIN auth_sessions
+              ON auth_sessions.session_digest = notification_devices.session_digest
+            WHERE notification_devices.status = ?
+            ORDER BY notification_devices.updated_at DESC, notification_devices.device_id ASC
+            """,
+            (status,),
+        )
+        observed_at = now or datetime.now(timezone.utc)
+        devices: list[dict[str, Any]] = []
+        for row in rows:
+            device = dict(row)
+            session_digest = str(device.get("session_digest", ""))
+            if status == "active" and session_digest:
+                last_seen = parse_iso_datetime(str(device.pop("auth_last_seen_at", "")))
+                expires_at = parse_iso_datetime(str(device.pop("auth_expires_at", "")))
+                revoked_at = str(device.pop("auth_revoked_at", ""))
+                idle_deadline = (
+                    last_seen + timedelta(seconds=max(60, session_idle_seconds))
+                    if last_seen is not None else None
+                )
+                if (
+                    expires_at is None
+                    or expires_at <= observed_at
+                    or idle_deadline is None
+                    or idle_deadline <= observed_at
+                    or revoked_at
+                ):
+                    continue
+            else:
+                device.pop("auth_last_seen_at", None)
+                device.pop("auth_expires_at", None)
+                device.pop("auth_revoked_at", None)
+            devices.append(device)
+        return devices
+
+    def disable_notification_device(
+        self, token: str, *, reason: str = "provider_rejected", now: datetime | None = None,
+    ) -> None:
+        self._execute(
+            """
+            UPDATE notification_devices
+            SET status = 'disabled', last_error = ?, updated_at = ?
+            WHERE token = ?
+            """,
+            (reason[:240], utc_now_iso(now), token),
+        )
+
+    def disable_notification_device_by_id(
+        self,
+        device_id: str,
+        *,
+        reason: str = "client_unregistered",
+        session_digest: str = "",
+        now: datetime | None = None,
+    ) -> bool:
+        clean_device_id = device_id.strip()
+        if not clean_device_id or len(clean_device_id) > 128:
+            raise ValueError("invalid notification device id")
+        sql = """
+            UPDATE notification_devices
+            SET status = 'disabled', last_error = ?, updated_at = ?
+            WHERE device_id = ? AND status != 'disabled'
+        """
+        params: tuple[Any, ...] = (reason[:240], utc_now_iso(now), clean_device_id)
+        if session_digest:
+            sql += " AND session_digest = ?"
+            params = (*params, session_digest)
+        active = self._active_connection()
+        if active is not None:
+            return bool(active.execute(sql, params).rowcount)
+        with self._connect() as conn:
+            changed = conn.execute(sql, params).rowcount
+            conn.commit()
+        return bool(changed)
+
+    def disable_notification_devices_by_session(
+        self,
+        session_digest: str,
+        *,
+        reason: str = "session_revoked",
+        now: datetime | None = None,
+    ) -> int:
+        clean_digest = session_digest.strip()
+        if not clean_digest:
+            return 0
+        active = self._active_connection()
+        sql = """
+            UPDATE notification_devices
+            SET status = 'disabled', last_error = ?, updated_at = ?
+            WHERE session_digest = ? AND status != 'disabled'
+        """
+        params = (reason[:240], utc_now_iso(now), clean_digest)
+        if active is not None:
+            return int(active.execute(sql, params).rowcount)
+        with self._connect() as conn:
+            changed = int(conn.execute(sql, params).rowcount)
+            conn.commit()
+            return changed
+
     def enqueue_job(
         self,
         job_type: str,
@@ -744,74 +1197,165 @@ class CompanionRuntimeStore:
         run_after_iso = utc_now_iso(run_after)
         idem = idempotency_key or f"{job_type}:{run_after_iso}"
         job_id = f"job_{job_type}_{hashlib.sha256(idem.encode('utf-8')).hexdigest()[:12]}"
-        self._execute(
-            """
-            INSERT INTO jobs (
-                job_id, job_type, payload_json, status, run_after, locked_until,
-                attempts, max_attempts, idempotency_key, last_error, created_at, updated_at
-            ) VALUES (?, ?, ?, 'queued', ?, '', 0, ?, ?, '', ?, ?)
-            ON CONFLICT(idempotency_key) DO UPDATE SET
-                payload_json = excluded.payload_json,
-                run_after = excluded.run_after,
-                status = CASE WHEN jobs.status = 'running' THEN jobs.status ELSE 'queued' END,
-                updated_at = excluded.updated_at
-            """,
-            (
-                job_id,
-                job_type,
-                json.dumps(payload, ensure_ascii=False),
-                run_after_iso,
-                max_attempts,
-                idem,
-                run_after_iso,
-                utc_now_iso(),
-            ),
-        )
-        row = self._fetch_one("SELECT job_id FROM jobs WHERE idempotency_key = ?", (idem,))
+        updated_at = utc_now_iso()
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(
+                """
+                INSERT INTO jobs (
+                    job_id, job_type, payload_json, status, run_after, locked_until,
+                    attempts, max_attempts, idempotency_key, last_error, created_at, updated_at
+                ) VALUES (?, ?, ?, 'queued', ?, '', 0, ?, ?, '', ?, ?)
+                ON CONFLICT(idempotency_key) DO NOTHING
+                """,
+                (
+                    job_id,
+                    job_type,
+                    json.dumps(payload, ensure_ascii=False),
+                    run_after_iso,
+                    max_attempts,
+                    idem,
+                    run_after_iso,
+                    updated_at,
+                ),
+            )
+            row = conn.execute(
+                "SELECT job_id FROM jobs WHERE idempotency_key = ?", (idem,),
+            ).fetchone()
+            retained_job_id = str(row["job_id"]) if row else job_id
+            if payload.get("scheduled") is True:
+                candidates = conn.execute(
+                    """
+                    SELECT job_id, payload_json FROM jobs
+                    WHERE job_type = ? AND status = 'queued' AND job_id != ?
+                    """,
+                    (job_type, retained_job_id),
+                ).fetchall()
+                for candidate in candidates:
+                    try:
+                        candidate_payload = json.loads(candidate["payload_json"] or "{}")
+                    except json.JSONDecodeError:
+                        candidate_payload = {}
+                    if candidate_payload.get("scheduled") is not True:
+                        continue
+                    conn.execute(
+                        """
+                        UPDATE jobs
+                        SET status = 'succeeded', locked_until = '', lock_token = '',
+                            last_error = '', updated_at = ?, payload_json = ?
+                        WHERE job_id = ? AND status = 'queued'
+                        """,
+                        (
+                            updated_at,
+                            json.dumps(
+                                {"skipped": True, "reason": "superseded_by_newer_periodic_job"},
+                                ensure_ascii=False,
+                            ),
+                            candidate["job_id"],
+                        ),
+                    )
+            conn.commit()
         return str(row["job_id"]) if row else job_id
 
-    def reserve_api_idempotency(self, key: str, method: str, path: str) -> dict[str, Any]:
-        now = utc_now_iso()
+    def reserve_api_idempotency(
+        self,
+        key: str,
+        method: str,
+        path: str,
+        *,
+        request_fingerprint: str = "",
+        now: datetime | None = None,
+        lease_seconds: int = 120,
+    ) -> dict[str, Any]:
+        now_value = now or datetime.now(timezone.utc)
+        now_iso = utc_now_iso(now_value)
+        expired_before = utc_now_iso(now_value - _seconds_delta(lease_seconds))
+        reservation_token = f"api_lease_{uuid.uuid4().hex}"
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             row = conn.execute(
-                "SELECT method, path, status_code, response_json FROM api_idempotency WHERE idempotency_key = ?",
+                """
+                SELECT method, path, request_fingerprint, status_code, response_json,
+                       reservation_token, updated_at
+                FROM api_idempotency WHERE idempotency_key = ?
+                """,
                 (key,),
             ).fetchone()
             if row is not None:
-                conn.commit()
                 if row["method"] != method or row["path"] != path:
+                    conn.commit()
+                    return {"state": "conflict"}
+                stored_fingerprint = str(row["request_fingerprint"] or "")
+                if stored_fingerprint != request_fingerprint:
+                    conn.commit()
                     return {"state": "conflict"}
                 if row["status_code"]:
+                    conn.commit()
                     return {
                         "state": "completed",
                         "status_code": int(row["status_code"]),
                         "response_json": str(row["response_json"] or "{}"),
                     }
+                if str(row["updated_at"] or "") <= expired_before:
+                    conn.execute(
+                        """
+                        UPDATE api_idempotency
+                        SET reservation_token = ?, updated_at = ?
+                        WHERE idempotency_key = ? AND status_code = 0
+                        """,
+                        (reservation_token, now_iso, key),
+                    )
+                    conn.commit()
+                    return {"state": "reserved", "reservation_token": reservation_token}
+                conn.commit()
                 return {"state": "in_flight"}
             conn.execute(
                 """
                 INSERT INTO api_idempotency (
-                    idempotency_key, method, path, status_code, response_json, created_at, updated_at
-                ) VALUES (?, ?, ?, 0, '', ?, ?)
+                    idempotency_key, method, path, status_code, response_json,
+                    request_fingerprint, reservation_token, created_at, updated_at
+                ) VALUES (?, ?, ?, 0, '', ?, ?, ?, ?)
                 """,
-                (key, method, path, now, now),
+                (key, method, path, request_fingerprint, reservation_token, now_iso, now_iso),
             )
             conn.commit()
-        return {"state": "reserved"}
+        return {"state": "reserved", "reservation_token": reservation_token}
 
-    def complete_api_idempotency(self, key: str, status_code: int, response_json: str) -> None:
-        self._execute(
-            """
+    def complete_api_idempotency(
+        self,
+        key: str,
+        status_code: int,
+        response_json: str,
+        *,
+        reservation_token: str = "",
+    ) -> bool:
+        where_clause = "idempotency_key = ? AND status_code = 0"
+        params: tuple[Any, ...] = (status_code, response_json, utc_now_iso(), key)
+        if reservation_token:
+            where_clause += " AND reservation_token = ?"
+            params += (reservation_token,)
+        with self._connect() as conn:
+            changed = conn.execute(
+                f"""
             UPDATE api_idempotency
             SET status_code = ?, response_json = ?, updated_at = ?
-            WHERE idempotency_key = ?
-            """,
-            (status_code, response_json, utc_now_iso(), key),
-        )
+            WHERE {where_clause}
+                """,
+                params,
+            ).rowcount
+            conn.commit()
+        return bool(changed)
 
-    def release_api_idempotency(self, key: str) -> None:
-        self._execute("DELETE FROM api_idempotency WHERE idempotency_key = ? AND status_code = 0", (key,))
+    def release_api_idempotency(self, key: str, *, reservation_token: str = "") -> bool:
+        where_clause = "idempotency_key = ? AND status_code = 0"
+        params: tuple[Any, ...] = (key,)
+        if reservation_token:
+            where_clause += " AND reservation_token = ?"
+            params += (reservation_token,)
+        with self._connect() as conn:
+            changed = conn.execute(f"DELETE FROM api_idempotency WHERE {where_clause}", params).rowcount
+            conn.commit()
+        return bool(changed)
 
     def create_auth_session(self, session_digest: str, created_at: str, expires_at: str) -> None:
         self._execute(
@@ -847,6 +1391,56 @@ class CompanionRuntimeStore:
             "DELETE FROM auth_sessions WHERE expires_at < ? OR (revoked_at != '' AND revoked_at < ?)",
             (before, before),
         )
+
+    def prune_runtime_records(
+        self,
+        *,
+        now: datetime | None = None,
+        succeeded_job_days: int = 7,
+        failed_job_days: int = 30,
+        idempotency_days: int = 7,
+        disabled_device_days: int = 30,
+    ) -> dict[str, int]:
+        """Bound operational tables without deleting product history."""
+
+        reference = now or datetime.now(timezone.utc)
+        succeeded_before = utc_now_iso(reference - timedelta(days=max(1, succeeded_job_days)))
+        failed_before = utc_now_iso(reference - timedelta(days=max(1, failed_job_days)))
+        idempotency_before = utc_now_iso(reference - timedelta(days=max(1, idempotency_days)))
+        abandoned_before = utc_now_iso(reference - timedelta(days=1))
+        disabled_before = utc_now_iso(reference - timedelta(days=max(1, disabled_device_days)))
+        now_iso = utc_now_iso(reference)
+        with self.atomic():
+            active = self._active_connection()
+            if active is None:  # pragma: no cover - atomic always owns a connection.
+                raise RuntimeError("maintenance transaction unavailable")
+            counts = {
+                "succeeded_jobs": active.execute(
+                    "DELETE FROM jobs WHERE status = 'succeeded' AND updated_at < ?",
+                    (succeeded_before,),
+                ).rowcount,
+                "failed_jobs": active.execute(
+                    "DELETE FROM jobs WHERE status = 'failed' AND updated_at < ?",
+                    (failed_before,),
+                ).rowcount,
+                "completed_idempotency": active.execute(
+                    "DELETE FROM api_idempotency WHERE status_code != 0 AND updated_at < ?",
+                    (idempotency_before,),
+                ).rowcount,
+                "abandoned_idempotency": active.execute(
+                    "DELETE FROM api_idempotency WHERE status_code = 0 AND updated_at < ?",
+                    (abandoned_before,),
+                ).rowcount,
+                "expired_sessions": active.execute(
+                    "DELETE FROM auth_sessions WHERE expires_at < ? OR (revoked_at != '' AND revoked_at < ?)",
+                    (now_iso, now_iso),
+                ).rowcount,
+                "disabled_devices": active.execute(
+                    "DELETE FROM notification_devices WHERE status = 'disabled' AND updated_at < ?",
+                    (disabled_before,),
+                ).rowcount,
+            }
+        return {key: int(value) for key, value in counts.items()}
 
     def record_runtime_health(
         self,
@@ -904,52 +1498,140 @@ class CompanionRuntimeStore:
     ) -> list[dict[str, Any]]:
         now = now or datetime.now(timezone.utc)
         now_iso = utc_now_iso(now)
+        lease_until = utc_now_iso(now + _seconds_delta(lease_seconds))
         with self._connect() as conn:
-            conn.row_factory = sqlite3.Row
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(
+                """
+                UPDATE jobs
+                SET status = 'failed', locked_until = '', lock_token = '',
+                    last_error = CASE
+                        WHEN last_error = '' AND status = 'running' THEN 'worker_lease_expired'
+                        WHEN last_error = '' THEN 'max_attempts_exhausted'
+                        ELSE last_error
+                    END,
+                    updated_at = ?
+                WHERE attempts >= max_attempts AND (
+                    (status = 'queued' AND (run_after IS NULL OR run_after <= ?))
+                    OR (status = 'running' AND locked_until != '' AND locked_until <= ?)
+                )
+                """,
+                (now_iso, now_iso, now_iso),
+            )
             rows = conn.execute(
                 """
                 SELECT * FROM jobs
-                WHERE status = 'queued'
+                WHERE (
+                    status = 'queued'
+                    OR (status = 'running' AND locked_until != '' AND locked_until <= ?)
+                )
                   AND (run_after IS NULL OR run_after <= ?)
                   AND attempts < max_attempts
-                  AND (locked_until = '' OR locked_until < ?)
                 ORDER BY run_after ASC, created_at ASC
                 LIMIT ?
                 """,
                 (now_iso, now_iso, limit),
             ).fetchall()
             claimed: list[dict[str, Any]] = []
-            lease_until = utc_now_iso(now + _seconds_delta(lease_seconds))
             for row in rows:
-                conn.execute(
+                lock_token = f"job_lease_{uuid.uuid4().hex}"
+                changed = conn.execute(
                     """
                     UPDATE jobs
-                    SET status = 'running', attempts = attempts + 1, locked_until = ?, updated_at = ?
-                    WHERE job_id = ? AND status = 'queued'
+                    SET status = 'running', attempts = attempts + 1, locked_until = ?,
+                        lock_token = ?, updated_at = ?
+                    WHERE job_id = ? AND (
+                        status = 'queued'
+                        OR (status = 'running' AND locked_until != '' AND locked_until <= ?)
+                    ) AND attempts < max_attempts
                     """,
-                    (lease_until, now_iso, row["job_id"]),
-                )
+                    (lease_until, lock_token, now_iso, row["job_id"], now_iso),
+                ).rowcount
+                if not changed:
+                    continue
                 updated = conn.execute("SELECT * FROM jobs WHERE job_id = ?", (row["job_id"],)).fetchone()
                 if updated and updated["status"] == "running":
-                    claimed.append(_row_to_job(updated))
+                    payload = _row_to_job(updated)
+                    payload["_job_lock_token"] = lock_token
+                    claimed.append(payload)
             conn.commit()
         return claimed
 
-    def complete_job(self, job_id: str, result: dict[str, Any] | None = None) -> None:
-        payload = json.dumps(result or {}, ensure_ascii=False)
-        self._execute(
-            """
-            UPDATE jobs
-            SET status = 'succeeded', locked_until = '', last_error = '', updated_at = ?, payload_json = ?
-            WHERE job_id = ?
-            """,
-            (utc_now_iso(), payload, job_id),
-        )
+    def claim_job(
+        self,
+        job_id: str,
+        *,
+        now: datetime | None = None,
+        lease_seconds: int = 300,
+    ) -> dict[str, Any] | None:
+        """Claim one exact job without consuming an unrelated queue entry."""
+        now = now or datetime.now(timezone.utc)
+        now_iso = utc_now_iso(now)
+        lease_until = utc_now_iso(now + _seconds_delta(lease_seconds))
+        lock_token = f"job_lease_{uuid.uuid4().hex}"
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            changed = conn.execute(
+                """
+                UPDATE jobs
+                SET status = 'running', attempts = attempts + 1, locked_until = ?,
+                    lock_token = ?, updated_at = ?
+                WHERE job_id = ?
+                  AND (run_after IS NULL OR run_after <= ?)
+                  AND attempts < max_attempts
+                  AND (
+                      status = 'queued'
+                      OR (status = 'running' AND locked_until != '' AND locked_until <= ?)
+                  )
+                """,
+                (lease_until, lock_token, now_iso, job_id, now_iso, now_iso),
+            ).rowcount
+            row = conn.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,)).fetchone()
+            conn.commit()
+        if not changed or row is None:
+            return None
+        payload = _row_to_job(row)
+        payload["_job_lock_token"] = lock_token
+        return payload
 
-    def fail_job(self, job_id: str, error: str) -> bool:
+    def complete_job(
+        self, job_id: str, result: dict[str, Any] | None = None, *, lease_token: str = "",
+    ) -> bool:
+        payload = json.dumps(result or {}, ensure_ascii=False)
+        where_clause = "job_id = ?"
+        params: tuple[Any, ...] = (utc_now_iso(), payload, job_id)
+        if lease_token:
+            where_clause += " AND status = 'running' AND lock_token = ?"
+            params += (lease_token,)
+        active = self._active_connection()
+        if active is not None:
+            changed = active.execute(
+                f"""
+            UPDATE jobs
+            SET status = 'succeeded', locked_until = '', lock_token = '',
+                last_error = '', updated_at = ?, payload_json = ?
+            WHERE {where_clause}
+                """,
+                params,
+            ).rowcount
+            return bool(changed)
+        with self._connect() as conn:
+            changed = conn.execute(
+                f"""
+            UPDATE jobs
+            SET status = 'succeeded', locked_until = '', lock_token = '',
+                last_error = '', updated_at = ?, payload_json = ?
+            WHERE {where_clause}
+                """,
+                params,
+            ).rowcount
+            conn.commit()
+        return bool(changed)
+
+    def fail_job(self, job_id: str, error: str, *, lease_token: str = "") -> bool | None:
         row = self._fetch_one("SELECT attempts, max_attempts FROM jobs WHERE job_id = ?", (job_id,))
         if row is None:
-            return False
+            return None
         now = datetime.now(timezone.utc)
         retrying = int(row["attempts"]) < int(row["max_attempts"])
         if retrying:
@@ -959,14 +1641,24 @@ class CompanionRuntimeStore:
         else:
             run_after = utc_now_iso(now)
             status = "failed"
-        self._execute(
-            """
+        where_clause = "job_id = ?"
+        params: tuple[Any, ...] = (status, run_after, error[:1000], utc_now_iso(now), job_id)
+        if lease_token:
+            where_clause += " AND status = 'running' AND lock_token = ?"
+            params += (lease_token,)
+        with self._connect() as conn:
+            changed = conn.execute(
+                f"""
             UPDATE jobs
-            SET status = ?, run_after = ?, last_error = ?, locked_until = '', updated_at = ?
-            WHERE job_id = ?
-            """,
-            (status, run_after, error[:1000], utc_now_iso(now), job_id),
-        )
+            SET status = ?, run_after = ?, last_error = ?, locked_until = '',
+                lock_token = '', updated_at = ?
+            WHERE {where_clause}
+                """,
+                params,
+            ).rowcount
+            conn.commit()
+        if not changed:
+            return None
         return retrying
 
     def read_events(
@@ -1805,6 +2497,9 @@ class CompanionRuntimeStore:
 
     def _ensure_schema(self) -> None:
         with self._connect() as conn:
+            # API and worker may cold-start together.  Serialize all schema
+            # probes and migrations so both cannot ALTER the same column.
+            conn.execute("BEGIN IMMEDIATE")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS companion_state (
@@ -1913,11 +2608,31 @@ class CompanionRuntimeStore:
                     created_at TEXT NOT NULL,
                     sent_at TEXT NOT NULL DEFAULT '',
                     replied_at TEXT NOT NULL DEFAULT '',
+                    delivery_attempts INTEGER NOT NULL DEFAULT 0,
+                    next_attempt_at TEXT NOT NULL DEFAULT '',
+                    last_attempt_at TEXT NOT NULL DEFAULT '',
+                    last_error TEXT NOT NULL DEFAULT '',
+                    delivered_at TEXT NOT NULL DEFAULT '',
+                    delivery_lock_token TEXT NOT NULL DEFAULT '',
+                    delivery_locked_until TEXT NOT NULL DEFAULT '',
                     payload_json TEXT NOT NULL DEFAULT '{}',
                     idempotency_key TEXT NOT NULL UNIQUE
                 )
                 """
             )
+            outbox_columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(outbox)")}
+            outbox_migrations = {
+                "delivery_attempts": "INTEGER NOT NULL DEFAULT 0",
+                "next_attempt_at": "TEXT NOT NULL DEFAULT ''",
+                "last_attempt_at": "TEXT NOT NULL DEFAULT ''",
+                "last_error": "TEXT NOT NULL DEFAULT ''",
+                "delivered_at": "TEXT NOT NULL DEFAULT ''",
+                "delivery_lock_token": "TEXT NOT NULL DEFAULT ''",
+                "delivery_locked_until": "TEXT NOT NULL DEFAULT ''",
+            }
+            for column, definition in outbox_migrations.items():
+                if column not in outbox_columns:
+                    conn.execute(f"ALTER TABLE outbox ADD COLUMN {column} {definition}")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS memory_threads (
@@ -1968,6 +2683,7 @@ class CompanionRuntimeStore:
                     status TEXT NOT NULL DEFAULT 'queued',
                     run_after TEXT NOT NULL DEFAULT '',
                     locked_until TEXT NOT NULL DEFAULT '',
+                    lock_token TEXT NOT NULL DEFAULT '',
                     attempts INTEGER NOT NULL DEFAULT 0,
                     max_attempts INTEGER NOT NULL DEFAULT 5,
                     idempotency_key TEXT NOT NULL UNIQUE,
@@ -1977,19 +2693,35 @@ class CompanionRuntimeStore:
                 )
                 """
             )
+            job_columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(jobs)")}
+            if "lock_token" not in job_columns:
+                conn.execute("ALTER TABLE jobs ADD COLUMN lock_token TEXT NOT NULL DEFAULT ''")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS api_idempotency (
                     idempotency_key TEXT PRIMARY KEY,
                     method TEXT NOT NULL,
                     path TEXT NOT NULL,
+                    request_fingerprint TEXT NOT NULL DEFAULT '',
                     status_code INTEGER NOT NULL DEFAULT 0,
                     response_json TEXT NOT NULL DEFAULT '',
+                    reservation_token TEXT NOT NULL DEFAULT '',
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
                 """
             )
+            api_idempotency_columns = {
+                str(row["name"]) for row in conn.execute("PRAGMA table_info(api_idempotency)")
+            }
+            if "reservation_token" not in api_idempotency_columns:
+                conn.execute(
+                    "ALTER TABLE api_idempotency ADD COLUMN reservation_token TEXT NOT NULL DEFAULT ''"
+                )
+            if "request_fingerprint" not in api_idempotency_columns:
+                conn.execute(
+                    "ALTER TABLE api_idempotency ADD COLUMN request_fingerprint TEXT NOT NULL DEFAULT ''"
+                )
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS auth_sessions (
@@ -2063,6 +2795,52 @@ class CompanionRuntimeStore:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS companion_settings (
+                    user_scope TEXT PRIMARY KEY,
+                    payload_json TEXT NOT NULL DEFAULT '{}',
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS notification_devices (
+                    device_id TEXT PRIMARY KEY,
+                    token TEXT NOT NULL UNIQUE,
+                    platform TEXT NOT NULL DEFAULT 'android',
+                    provider TEXT NOT NULL DEFAULT 'fcm',
+                    installation_id TEXT NOT NULL DEFAULT '',
+                    session_digest TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'active',
+                    last_error TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    last_seen_at TEXT NOT NULL
+                )
+                """
+            )
+            notification_device_columns = {
+                str(row["name"]) for row in conn.execute("PRAGMA table_info(notification_devices)")
+            }
+            if "installation_id" not in notification_device_columns:
+                conn.execute(
+                    "ALTER TABLE notification_devices ADD COLUMN installation_id TEXT NOT NULL DEFAULT ''"
+                )
+            if "session_digest" not in notification_device_columns:
+                conn.execute(
+                    "ALTER TABLE notification_devices ADD COLUMN session_digest TEXT NOT NULL DEFAULT ''"
+                )
+            conn.execute("CREATE INDEX IF NOT EXISTS notification_devices_status_idx ON notification_devices(status, provider)")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS notification_devices_installation_idx "
+                "ON notification_devices(installation_id, status)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS notification_devices_session_idx "
+                "ON notification_devices(session_digest, status)"
+            )
             self._fts_enabled = self._ensure_fts(conn)
             conn.commit()
 
@@ -2080,26 +2858,46 @@ class CompanionRuntimeStore:
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, factory=_ClosingConnection)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA foreign_keys=ON")
-        conn.execute("PRAGMA busy_timeout=5000")
-        return conn
+        try:
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA busy_timeout=5000")
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA foreign_keys=ON")
+            return conn
+        except BaseException:
+            # A concurrent cold start can fail while applying connection
+            # pragmas, before the caller's context manager has been entered.
+            # Close explicitly so that failed connection attempts do not leak.
+            conn.close()
+            raise
 
     def _execute(self, sql: str, params: tuple[Any, ...]) -> None:
+        active = self._active_connection()
+        if active is not None:
+            active.execute(sql, params)
+            return
         with self._connect() as conn:
             conn.execute(sql, params)
             conn.commit()
 
     def _fetch_one(self, sql: str, params: tuple[Any, ...]) -> sqlite3.Row | None:
+        active = self._active_connection()
+        if active is not None:
+            return active.execute(sql, params).fetchone()
         with self._connect() as conn:
             row = conn.execute(sql, params).fetchone()
             return row
 
     def _fetch_all(self, sql: str, params: tuple[Any, ...] = ()) -> list[sqlite3.Row]:
+        active = self._active_connection()
+        if active is not None:
+            return list(active.execute(sql, params).fetchall())
         with self._connect() as conn:
             rows = conn.execute(sql, params).fetchall()
             return list(rows)
+
+    def _active_connection(self) -> sqlite3.Connection | None:
+        return getattr(self._transaction_state, "connection", None)
 
     def _db_memories(self) -> list[MemoryRecord]:
         rows = self._fetch_all("SELECT * FROM memory_items ORDER BY created_at ASC, memory_id ASC")
@@ -2217,6 +3015,11 @@ def _row_to_outbox(row: sqlite3.Row) -> dict[str, Any]:
         "created_at": row["created_at"],
         "sent_at": row["sent_at"],
         "replied_at": row["replied_at"],
+        "delivery_attempts": row["delivery_attempts"],
+        "next_attempt_at": row["next_attempt_at"],
+        "last_attempt_at": row["last_attempt_at"],
+        "last_error": row["last_error"],
+        "delivered_at": row["delivered_at"],
         "payload": json.loads(row["payload_json"] or "{}"),
         "idempotency_key": row["idempotency_key"],
     }

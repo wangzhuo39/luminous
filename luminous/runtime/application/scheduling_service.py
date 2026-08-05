@@ -30,8 +30,19 @@ class SchedulingService:
             kind = ProactiveKind(str(payload.get("kind", ProactiveKind.REMINDER)))
         except ValueError as exc:
             raise ValueError("invalid reminder kind") from exc
+        requested_id = str(payload.get("reminder_id", "")).strip()
+        if requested_id:
+            existing = self.store.get_reminder(requested_id)
+            if existing is not None:
+                if (
+                    existing.title != title
+                    or existing.due_at != due_at
+                    or existing.source_ref != str(payload.get("source_ref", ""))
+                ):
+                    raise ValueError("reminder_id already exists with different content")
+                return {"ok": True, "idempotent": True, "reminder": existing.to_dict(), "event": {}}
         reminder = Reminder(
-            reminder_id=str(payload.get("reminder_id") or new_event_id("reminder")),
+            reminder_id=requested_id or new_event_id("reminder"),
             title=title,
             due_at=due_at,
             timezone_name=str(payload.get("timezone_name", "UTC")),
@@ -45,12 +56,13 @@ class SchedulingService:
             updated_at=utc_now_iso(now),
             metadata=dict(payload.get("metadata", {}) or {}),
         )
-        reminder = self.store.save_reminder(reminder)
         event = make_event(
             "reminder_created", reminder.title, {"reminder": reminder.to_dict()},
             trace_id=new_event_id("trace"), now=now, actor="user", source_ids=[reminder.reminder_id],
         )
-        self.store.append_event(event)
+        with self.store.atomic():
+            reminder = self.store.save_reminder(reminder)
+            self.store.append_event(event)
         return {"ok": True, "reminder": reminder.to_dict(), "event": event.to_dict()}
 
     def read_reminders(self, *, status: str | None = None, limit: int = 100) -> dict[str, Any]:
@@ -61,14 +73,15 @@ class SchedulingService:
         now = self.clock()
         if "due_at" in updates and parse_iso_datetime(str(updates["due_at"])) is None:
             raise ValueError("due_at must be an ISO-8601 datetime")
-        updated = self.store.update_reminder(reminder_id, dict(updates), now=now)
-        if updated is None:
-            return {"ok": False, "reason": "not_found", "reminder_id": reminder_id}
-        event = make_event(
-            "reminder_updated", updated.title, {"reminder": updated.to_dict(), "updates": updates},
-            trace_id=new_event_id("trace"), now=now, actor="user", source_ids=[reminder_id],
-        )
-        self.store.append_event(event)
+        with self.store.atomic():
+            updated = self.store.update_reminder(reminder_id, dict(updates), now=now)
+            if updated is None:
+                return {"ok": False, "reason": "not_found", "reminder_id": reminder_id}
+            event = make_event(
+                "reminder_updated", updated.title, {"reminder": updated.to_dict(), "updates": updates},
+                trace_id=new_event_id("trace"), now=now, actor="user", source_ids=[reminder_id],
+            )
+            self.store.append_event(event)
         return {"ok": True, "reminder": updated.to_dict(), "event": event.to_dict()}
 
     def snooze_reminder(self, reminder_id: str, due_at: str) -> dict[str, Any]:
@@ -93,16 +106,24 @@ class SchedulingService:
         ends_at = str(payload.get("ends_at", ""))
         if ends_at and parse_iso_datetime(ends_at) is None:
             raise ValueError("ends_at must be an ISO-8601 datetime")
+        requested_id = str(payload.get("event_id", "")).strip()
+        if requested_id:
+            existing = self.store.get_calendar_event(requested_id)
+            if existing is not None:
+                if existing.title != title or existing.starts_at != starts_at:
+                    raise ValueError("event_id already exists with different content")
+                return {"ok": True, "idempotent": True, "calendar_event": existing.to_dict(), "event": {}}
         event = CalendarEvent(
-            event_id=str(payload.get("event_id") or new_event_id("calendar")), title=title, starts_at=starts_at,
+            event_id=requested_id or new_event_id("calendar"), title=title, starts_at=starts_at,
             ends_at=ends_at, all_day=bool(payload.get("all_day", False)),
             user_scope=str(payload.get("user_scope", "default")), timezone_name=str(payload.get("timezone_name", "UTC")),
             reminder_ids=tuple(str(value) for value in payload.get("reminder_ids", []) or []),
             created_at=utc_now_iso(now), updated_at=utc_now_iso(now), metadata=dict(payload.get("metadata", {}) or {}),
         )
-        event = self.store.save_calendar_event(event)
         audit = make_event("calendar_event_created", event.title, {"calendar_event": event.to_dict()}, trace_id=new_event_id("trace"), now=now, actor="user", source_ids=[event.event_id])
-        self.store.append_event(audit)
+        with self.store.atomic():
+            event = self.store.save_calendar_event(event)
+            self.store.append_event(audit)
         return {"ok": True, "calendar_event": event.to_dict(), "event": audit.to_dict()}
 
     def read_calendar_events(self, *, limit: int = 100) -> dict[str, Any]:
@@ -111,11 +132,12 @@ class SchedulingService:
 
     def update_calendar_event(self, event_id: str, updates: dict[str, Any]) -> dict[str, Any]:
         now = self.clock()
-        updated = self.store.update_calendar_event(event_id, updates, now=now)
-        if updated is None:
-            return {"ok": False, "reason": "not_found", "event_id": event_id}
-        audit = make_event("calendar_event_updated", updated.title, {"calendar_event": updated.to_dict(), "updates": updates}, trace_id=new_event_id("trace"), now=now, actor="user", source_ids=[event_id])
-        self.store.append_event(audit)
+        with self.store.atomic():
+            updated = self.store.update_calendar_event(event_id, updates, now=now)
+            if updated is None:
+                return {"ok": False, "reason": "not_found", "event_id": event_id}
+            audit = make_event("calendar_event_updated", updated.title, {"calendar_event": updated.to_dict(), "updates": updates}, trace_id=new_event_id("trace"), now=now, actor="user", source_ids=[event_id])
+            self.store.append_event(audit)
         return {"ok": True, "calendar_event": updated.to_dict(), "event": audit.to_dict()}
 
     def notification_preferences(self) -> dict[str, Any]:
@@ -123,9 +145,10 @@ class SchedulingService:
 
     def update_notification_preferences(self, updates: dict[str, Any]) -> dict[str, Any]:
         now = self.clock()
-        preferences = self.store.save_notification_preferences(updates, now=now)
-        audit = make_event("notification_preferences_updated", "notification preferences", {"preferences": preferences}, trace_id=new_event_id("trace"), now=now, actor="user")
-        self.store.append_event(audit)
+        with self.store.atomic():
+            preferences = self.store.save_notification_preferences(updates, now=now)
+            audit = make_event("notification_preferences_updated", "notification preferences", {"preferences": preferences}, trace_id=new_event_id("trace"), now=now, actor="user")
+            self.store.append_event(audit)
         return {"ok": True, "preferences": preferences, "event": audit.to_dict()}
 
     def outbound_permitted(self, *, proactive_kind: str, now: datetime, risk_level: str = "") -> tuple[bool, list[str], dict[str, Any]]:

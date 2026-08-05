@@ -29,6 +29,8 @@ class BackendConfig:
     notify_telegram_bot_token: str = ""
     notify_telegram_chat_id: str = ""
     notify_bark_url: str = ""
+    notify_fcm_project_id: str = ""
+    notify_fcm_service_account_file: str = ""
     notify_timeout_seconds: int = 10
     deployment_mode: str = "local"
     auth_token: str = ""
@@ -53,10 +55,13 @@ class BackendConfig:
             return bool(self.notify_bark_url)
         if channel == "webhook":
             return bool(self.notify_webhook_url)
+        if channel == "fcm":
+            return bool(self.notify_fcm_project_id and self.notify_fcm_service_account_file)
         return bool(
             self.notify_webhook_url
             or (self.notify_telegram_bot_token and self.notify_telegram_chat_id)
             or self.notify_bark_url
+            or (self.notify_fcm_project_id and self.notify_fcm_service_account_file)
         )
 
     @property
@@ -144,6 +149,8 @@ def load_backend_config(
         notify_telegram_bot_token=value("ROLE_PLAY_NOTIFY_TELEGRAM_BOT_TOKEN", default="").strip(),
         notify_telegram_chat_id=value("ROLE_PLAY_NOTIFY_TELEGRAM_CHAT_ID", default="").strip(),
         notify_bark_url=value("ROLE_PLAY_NOTIFY_BARK_URL", default="").strip(),
+        notify_fcm_project_id=value("LUMINOUS_FCM_PROJECT_ID", default="").strip(),
+        notify_fcm_service_account_file=value("LUMINOUS_FCM_SERVICE_ACCOUNT_FILE", default="").strip(),
         notify_timeout_seconds=int(value("ROLE_PLAY_NOTIFY_TIMEOUT", default="10")),
         deployment_mode=deployment_mode,
         auth_token=auth_token,

@@ -1,16 +1,23 @@
 import {
-  adaptForgottenMemory, adaptMemoryResponse, adaptOutboxMutation, adaptOutboxResponse,
+  adaptCompanionSettings, adaptForgottenMemory, adaptMemoryResponse, adaptOutboxMutation, adaptOutboxResponse,
   adaptPrivacyResponse, adaptSavedNotifications, adaptUpdatedMemory,
 } from '../../adapters/silent-spaces-adapter.js';
 import { toAppError } from '../../shared/errors.js';
-import { renderMemory, renderOutbox, renderPrivacy } from './silent-spaces-view.js';
+import { renderCompanionSettings, renderMemory, renderOutbox, renderPrivacy } from './silent-spaces-view.js';
 
 function initialState() {
   const privacy = { enabled: true, dailyLimit: 3, quietStart: '', quietEnd: '', allowedKinds: [], dndUntil: '' };
+  const companion = {
+    baseUrl: '', model: '', temperature: 0.7, maxTokens: 768,
+    apiKeyConfigured: false, configured: false, instructions: '', customized: false, updatedAt: '',
+  };
   return {
     outbox: { status: 'idle', items: [], actions: {} },
     memory: { status: 'idle', query: '', items: [], editKey: '', editDraft: '', forgetKey: '', actionKey: '', actionStatus: 'idle' },
-    privacy: { status: 'idle', value: privacy, draft: { ...privacy }, dirty: false, loaded: false },
+    privacy: {
+      status: 'idle', value: privacy, draft: { ...privacy }, dirty: false, loaded: false,
+      companion: { status: 'idle', value: companion, draft: { ...companion, apiKey: '' }, dirty: false },
+    },
   };
 }
 
@@ -41,10 +48,26 @@ export function initSilentSpaces(dom, { dataSource, onStateChange, announce = ()
   };
   const loadPrivacy = () => run('privacy', 'loading',
     (signal) => dataSource.loadPrivacy({ signal }),
-    (raw) => { const value = adaptPrivacyResponse(raw); update('privacy', { value, draft: { ...value }, dirty: false, loaded: true, status: 'ready' }); });
+    (raw) => {
+      const value = adaptPrivacyResponse(raw);
+      const companion = adaptCompanionSettings(raw.companion);
+      update('privacy', {
+        value, draft: { ...value }, dirty: false, loaded: true, status: 'ready',
+        companion: {
+          status: raw.companionUnavailable ? 'load-error' : 'ready',
+          value: companion, draft: { ...companion, apiKey: '' }, dirty: false,
+        },
+      });
+    });
 
-  dom.portals.outbox?.addEventListener('click', () => { if (state.outbox.status === 'idle') loadOutbox(); });
-  dom.portals.privacy?.addEventListener('click', () => { if (state.privacy.status === 'idle') loadPrivacy(); });
+  const activate = (space) => {
+    if (space === 'outbox' && state.outbox.status === 'idle') return loadOutbox();
+    if (space === 'privacy' && state.privacy.status === 'idle') return loadPrivacy();
+    return Promise.resolve();
+  };
+
+  dom.portals.outbox?.addEventListener('click', () => activate('outbox'));
+  dom.portals.privacy?.addEventListener('click', () => activate('privacy'));
   dom.outbox.retry?.addEventListener('click', loadOutbox);
   dom.memory.retry?.addEventListener('click', () => searchMemory());
   dom.privacy.retry?.addEventListener('click', loadPrivacy);
@@ -111,8 +134,56 @@ export function initSilentSpaces(dom, { dataSource, onStateChange, announce = ()
     } catch { update('privacy', { status: 'error' }); }
   });
 
+  const companionChanged = () => {
+    const draft = {
+      ...state.privacy.companion.draft,
+      baseUrl: dom.privacy.companionBaseUrl.value.trim(),
+      model: dom.privacy.companionModel.value.trim(),
+      temperature: Number(dom.privacy.companionTemperature.value),
+      maxTokens: Number(dom.privacy.companionMaxTokens.value),
+      apiKey: dom.privacy.companionApiKey.value.trim(),
+      instructions: dom.privacy.companionInstructions.value,
+    };
+    const comparable = ({ apiKey, ...value }) => value;
+    const dirty = Boolean(draft.apiKey)
+      || JSON.stringify(comparable(draft)) !== JSON.stringify(state.privacy.companion.value);
+    update('privacy', {
+      companion: { ...state.privacy.companion, draft, dirty, status: 'ready' },
+    });
+  };
+  dom.privacy.companionForm?.addEventListener('input', companionChanged);
+  dom.privacy.companionForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const current = state.privacy.companion;
+    if (!current.dirty) return;
+    update('privacy', { companion: { ...current, status: 'saving' } });
+    const changes = {
+      base_url: current.draft.baseUrl,
+      model: current.draft.model,
+      temperature: current.draft.temperature,
+      max_tokens: current.draft.maxTokens,
+      companion_prompt: current.draft.instructions,
+    };
+    if (current.draft.apiKey) changes.api_key = current.draft.apiKey;
+    try {
+      const value = adaptCompanionSettings(await dataSource.saveCompanionSettings({ changes }));
+      update('privacy', {
+        companion: { status: 'saved', value, draft: { ...value, apiKey: '' }, dirty: false },
+      });
+      announce('连接与伴侣设定已保存。');
+    } catch {
+      update('privacy', { companion: { ...state.privacy.companion, status: 'error' } });
+    }
+  });
+
   return Object.freeze({
-    render() { renderOutbox(dom.outbox, state.outbox); renderMemory(dom.memory, state.memory); renderPrivacy(dom.privacy, state.privacy); },
+    activate,
+    render() {
+      renderOutbox(dom.outbox, state.outbox);
+      renderMemory(dom.memory, state.memory);
+      renderPrivacy(dom.privacy, state.privacy);
+      renderCompanionSettings(dom.privacy, state.privacy);
+    },
     summary() { return { memoryCount: state.memory.items.length, outboxUnread: state.outbox.items.some((item) => !['read', 'replied'].includes(item.status)), dnd: Boolean(state.privacy.value.dndUntil) }; },
     destroy() { Object.values(controllers).forEach((controller) => controller?.abort()); },
   });

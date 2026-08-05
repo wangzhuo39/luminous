@@ -22,10 +22,27 @@ import {
   adaptConfirmedActionResponse,
 } from './adapters/scheduling-action-adapter.js';
 
-export function createApiLifeFlowDataSource({ api = lifeFlowApi } = {}) {
+export function createApiLifeFlowDataSource({
+  api = lifeFlowApi,
+  nativeBridge = null,
+} = {}) {
   const one = (method, adapter) => (params) => api[method](params).then(adapter);
   const list = (method, adapter) => (params) => api[method](params)
     .then((raw) => adapter(raw).items);
+  const syncReminder = async (reminder) => {
+    const bridge = nativeBridge || (typeof window === 'undefined' ? null : window.LuminousNative);
+    try { await bridge?.syncReminder?.(reminder); } catch { /* Server state remains authoritative. */ }
+    return reminder;
+  };
+  const reminderOne = (method) => (params) => api[method](params)
+    .then(adaptReminderResponse)
+    .then(syncReminder);
+  const reminderList = (params) => api.loadReminders(params)
+    .then((raw) => adaptReminderListResponse(raw).items)
+    .then(async (items) => {
+      await Promise.all(items.map(syncReminder));
+      return items;
+    });
 
   return Object.freeze({
     loadToday: one('loadToday', adaptTodayResponse),
@@ -55,10 +72,10 @@ export function createApiLifeFlowDataSource({ api = lifeFlowApi } = {}) {
     updateDiaryEntry: one('updateDiaryEntry', adaptDiaryEntryResponse),
     removeDiaryEntry: one('removeDiaryEntry', adaptDiaryEntryResponse),
 
-    loadReminders: list('loadReminders', adaptReminderListResponse),
-    createReminder: one('createReminder', adaptReminderResponse),
-    updateReminder: one('updateReminder', adaptReminderResponse),
-    transitionReminder: one('transitionReminder', adaptReminderResponse),
+    loadReminders: reminderList,
+    createReminder: reminderOne('createReminder'),
+    updateReminder: reminderOne('updateReminder'),
+    transitionReminder: reminderOne('transitionReminder'),
 
     loadCalendarEvents: list('loadCalendarEvents', adaptCalendarEventListResponse),
     createCalendarEvent: one('createCalendarEvent', adaptCalendarEventResponse),

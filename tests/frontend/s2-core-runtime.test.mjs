@@ -59,7 +59,14 @@ test('API runtime exposes only adapted scene state after initial load', async ()
   await new Promise((resolve) => setImmediate(resolve));
   const current = getState();
   assert.equal(current.appStatus, 'ready');
-  assert.deepEqual(current.viewModels.scene, { caption: '我在，光线也暖了一些。', tone: 'warm' });
+  assert.deepEqual(current.viewModels.scene, {
+    caption: '我在，光线也暖了一些。', tone: 'warm',
+    status: {
+      heartLabel: '心跳平稳', heartDetail: '72 次/分',
+      activityLabel: '正在看雨', activityDetail: '窗边 · 安静等你',
+      moodLabel: '有些温柔', moodDetail: '心里暖着',
+    },
+  });
   assert.doesNotMatch(JSON.stringify(current), /private_diagnosis|must-not-leak|memory.*raw/);
   assert.deepEqual(announcements, ['正在靠近栖光。', '栖光已经在这里。']);
   runtime.destroy();
@@ -83,7 +90,14 @@ test('retry ignores a superseded request even if it resolves later', async () =>
   assert.equal(pending.length, 2);
   pending[1].resolve(response({ state: { mood: 'quiet' } }));
   assert.equal(await retry, true);
-  assert.deepEqual(getState().viewModels.scene, { caption: '我在这里，陪你慢一点。', tone: 'quiet' });
+  assert.deepEqual(getState().viewModels.scene, {
+    caption: '我在这里，陪你慢一点。', tone: 'quiet',
+    status: {
+      heartLabel: '心跳平稳', heartDetail: '72 次/分',
+      activityLabel: '正在看雨', activityDetail: '窗边 · 安静等你',
+      moodLabel: '有点安静', moodDetail: '心绪轻缓',
+    },
+  });
   pending[0].resolve(response({ state: { mood: 'warm' } }));
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(getState().viewModels.scene.tone, 'quiet');

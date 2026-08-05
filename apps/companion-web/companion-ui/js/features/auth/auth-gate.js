@@ -1,5 +1,6 @@
 const SESSION_PATH = '/api/auth/session';
 const LOGIN_PATH = '/api/auth/login';
+const LOGOUT_PATH = '/api/auth/logout';
 
 export function initAuthGate({
   runtimeMode,
@@ -13,10 +14,19 @@ export function initAuthGate({
   const input = documentRef.querySelector('[data-hook="auth-code"]');
   const submit = documentRef.querySelector('[data-hook="auth-submit"]');
   const error = documentRef.querySelector('[data-hook="auth-error"]');
+  const logoutSection = documentRef.querySelector('[data-hook="auth-logout-section"]');
+  const logoutButton = documentRef.querySelector('[data-hook="auth-logout"]');
+  const logoutStatus = documentRef.querySelector('[data-hook="auth-logout-status"]');
   let started = false;
   let destroyed = false;
   let resolveReady;
   let rejectReady;
+  const apiUrl = (path) => {
+    const base = typeof windowRef.__LUMINOUS_API_BASE__ === 'string'
+      ? windowRef.__LUMINOUS_API_BASE__.trim().replace(/\/$/, '')
+      : '';
+    return base ? `${base}${path}` : path;
+  };
 
   const ready = new Promise((resolve, reject) => {
     resolveReady = resolve;
@@ -58,9 +68,10 @@ export function initAuthGate({
     submit.disabled = true;
     setGateState('required');
     try {
-      const response = await fetchImpl(LOGIN_PATH, {
+      const loginUrl = apiUrl(LOGIN_PATH);
+      const response = await fetchImpl(loginUrl, {
         method: 'POST',
-        credentials: 'same-origin',
+        credentials: loginUrl === LOGIN_PATH ? 'same-origin' : 'include',
         headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
         body: JSON.stringify({ access_code: accessCode }),
       });
@@ -86,8 +97,40 @@ export function initAuthGate({
     showRequired('登录已过期，请再次输入邀请码。');
   };
 
+  const logout = async (event) => {
+    event?.preventDefault?.();
+    if (runtimeMode === 'fixture' || destroyed || logoutButton?.disabled) return false;
+    if (windowRef.navigator?.onLine === false) {
+      if (logoutStatus) logoutStatus.textContent = '需要联网后才能安全退出此设备。';
+      return false;
+    }
+    if (logoutButton) logoutButton.disabled = true;
+    if (logoutStatus) logoutStatus.textContent = '正在关闭此设备上的会话…';
+    try {
+      const logoutUrl = apiUrl(LOGOUT_PATH);
+      const response = await fetchImpl(logoutUrl, {
+        method: 'POST',
+        credentials: logoutUrl === LOGOUT_PATH ? 'same-origin' : 'include',
+        headers: { Accept: 'application/json' },
+      });
+      if (!response.ok && response.status !== 401) throw new Error(`logout failed: ${response.status}`);
+      try { await windowRef.LuminousNative?.disableRealtime?.(); } catch { /* Server logout still takes precedence. */ }
+      try { windowRef.sessionStorage?.clear?.(); } catch { /* Storage can be unavailable. */ }
+      setGateState('checking');
+      windowRef.location.reload();
+      return true;
+    } catch {
+      if (logoutStatus) logoutStatus.textContent = '暂时无法安全退出，请检查网络后重试。';
+      return false;
+    } finally {
+      if (logoutButton) logoutButton.disabled = false;
+    }
+  };
+
   form?.addEventListener('submit', submitLogin);
+  logoutButton?.addEventListener('click', logout);
   windowRef.addEventListener?.('luminous:auth-required', onAuthRequired);
+  if (logoutSection) logoutSection.hidden = runtimeMode === 'fixture';
 
   const bootstrap = async () => {
     if (runtimeMode === 'fixture') {
@@ -101,8 +144,9 @@ export function initAuthGate({
       return;
     }
     try {
-      const response = await fetchImpl(SESSION_PATH, {
-        credentials: 'same-origin',
+      const sessionUrl = apiUrl(SESSION_PATH);
+      const response = await fetchImpl(sessionUrl, {
+        credentials: sessionUrl === SESSION_PATH ? 'same-origin' : 'include',
         headers: { Accept: 'application/json' },
       });
       if (response.ok) {
@@ -126,6 +170,7 @@ export function initAuthGate({
   const destroy = () => {
     destroyed = true;
     form?.removeEventListener('submit', submitLogin);
+    logoutButton?.removeEventListener('click', logout);
     windowRef.removeEventListener?.('luminous:auth-required', onAuthRequired);
     rejectReady?.(new Error('auth gate destroyed'));
   };
@@ -134,6 +179,7 @@ export function initAuthGate({
   return {
     ready,
     markStarted() { started = true; },
+    logout,
     destroy,
   };
 }

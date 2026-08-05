@@ -206,6 +206,17 @@ export function createDomRegistry(document) {
     quietStart: document.querySelector('[data-hook="privacy-quiet-start"]'),
     quietEnd: document.querySelector('[data-hook="privacy-quiet-end"]'),
     save: document.querySelector('[data-hook="privacy-save"]'),
+    companionForm: document.querySelector('[data-hook="companion-settings-form"]'),
+    companionStatus: document.querySelector('[data-hook="companion-settings-status"]'),
+    companionConnectionState: document.querySelector('[data-hook="companion-connection-state"]'),
+    companionBaseUrl: document.querySelector('[data-hook="companion-base-url"]'),
+    companionApiKey: document.querySelector('[data-hook="companion-api-key"]'),
+    companionKeyState: document.querySelector('[data-hook="companion-key-state"]'),
+    companionModel: document.querySelector('[data-hook="companion-model"]'),
+    companionTemperature: document.querySelector('[data-hook="companion-temperature"]'),
+    companionMaxTokens: document.querySelector('[data-hook="companion-max-tokens"]'),
+    companionInstructions: document.querySelector('[data-hook="companion-instructions"]'),
+    companionSave: document.querySelector('[data-hook="companion-settings-save"]'),
   },
   productization: {
     body: document.body,
@@ -216,4 +227,3 @@ export function createDomRegistry(document) {
   },
   };
 }
-

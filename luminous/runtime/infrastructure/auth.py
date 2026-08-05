@@ -60,11 +60,11 @@ class SessionAuth:
             return False
         now = self.clock()
         if _parse_time(str(session.get("expires_at", ""))) <= now:
-            self.store.revoke_auth_session(digest, _iso(now))
+            self._revoke_session(digest, now, reason="session_expired")
             return False
         last_seen = _parse_time(str(session.get("last_seen_at", "")))
         if last_seen + timedelta(seconds=max(60, self.config.session_idle_seconds)) <= now:
-            self.store.revoke_auth_session(digest, _iso(now))
+            self._revoke_session(digest, now, reason="session_idle_timeout")
             return False
         if (now - last_seen).total_seconds() >= 300:
             self.store.touch_auth_session(digest, _iso(now))
@@ -98,9 +98,18 @@ class SessionAuth:
         return token
 
     def logout(self, cookie_header: str) -> None:
+        digest = self.session_digest(cookie_header)
+        if digest:
+            self._revoke_session(digest, self.clock(), reason="session_logout")
+
+    def session_digest(self, cookie_header: str) -> str:
         token = self._read_cookie(cookie_header)
-        if token:
-            self.store.revoke_auth_session(self._digest(token), _iso(self.clock()))
+        return self._digest(token) if token and self.enabled else ""
+
+    def _revoke_session(self, digest: str, now: datetime, *, reason: str) -> None:
+        with self.store.atomic():
+            self.store.disable_notification_devices_by_session(digest, reason=reason, now=now)
+            self.store.revoke_auth_session(digest, _iso(now))
 
     @staticmethod
     def cookie_header(token: str, *, clear: bool = False) -> str:

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import math
 import re
 from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlparse
 
 from luminous.runtime.application.memory_extractor import MemoryExtractor
 from luminous.runtime.application.life_flow_service import LifeFlowService
@@ -54,14 +56,24 @@ class CompanionRuntime:
         self.memory_extractor = MemoryExtractor(config, self.client)
         self.state_engine = StateEngine()
         self.proactive_engine = ProactiveEngine()
-        self.notification_bridge = NotificationBridge(config)
+        self.notification_bridge = NotificationBridge(config, self.store)
         self.safety_policy = SafetyPolicy()
         self.scheduling = SchedulingService(self.store, clock=self.clock, safety_policy=self.safety_policy)
         self.life_flow = LifeFlowService(
             LifeFlowStore(self.store.base_dir), self.store, self.scheduling, clock=self.clock,
         )
+        self._default_companion_settings = {
+            "base_url": config.base_url,
+            "api_key": config.api_key,
+            "model": config.model,
+            "temperature": config.temperature,
+            "max_tokens": config.max_tokens,
+            "companion_prompt": "",
+        }
+        self._refresh_companion_settings()
 
     def chat(self, user_text: str, history: Sequence[dict[str, object]] | None = None) -> dict[str, object]:
+        self._refresh_companion_settings()
         clean_user_text = user_text.strip()
         if not clean_user_text:
             raise ValueError("message is required")
@@ -113,24 +125,6 @@ class CompanionRuntime:
             now=now,
             actor="assistant",
         )
-        self.store.append_raw_message(
-            message_id=user_event.event_id,
-            trace_id=trace_id,
-            turn_id=turn_id,
-            role="user",
-            content=clean_user_text,
-            created_at=user_event.created_at,
-            source_event_id=user_event.event_id,
-        )
-        self.store.append_raw_message(
-            message_id=assistant_event.event_id,
-            trace_id=trace_id,
-            turn_id=turn_id,
-            role="assistant",
-            content=parsed.reply,
-            created_at=assistant_event.created_at,
-            source_event_id=assistant_event.event_id,
-        )
         memory_result = self.memory_extractor.extract(
             clean_user_text,
             parsed.reply,
@@ -138,77 +132,96 @@ class CompanionRuntime:
             trace_id=trace_id,
             now=now,
         )
-        memory_records = [
-            self.store.write_memory(record, trace_id=trace_id, emit_audit=True)
-            for record in memory_result.records
-        ]
-        transition = self.state_engine.apply_turn(
-            state,
-            user_text=clean_user_text,
-            assistant_text=parsed.reply,
-            memory_records=memory_records,
-            risk_flags=risk_flags,
-            now=now,
-        )
-        model_event = make_event(
-            "model_call",
-            _shorten(parsed.reply, 80),
-            {
-                "model": self.config.model if not self.config.mock else "mock",
-                "mock": self.config.mock,
-                "message_count": len(prompt_package.messages),
-                "prompt": prompt_package.to_trace_dict(),
-            },
-            trace_id=trace_id,
-            now=now,
-            actor="model",
-        )
-        memory_event = make_event(
-            "memory_extracted",
-            f"{len(memory_records)} 条记忆",
-            {
-                "source_event_id": user_event.event_id,
-                "extraction": memory_result.to_trace_dict(),
-                "records": [record.to_dict() for record in memory_records],
-            },
-            trace_id=trace_id,
-            now=now,
-        )
-        state_event = make_event(
-            "state_transition",
-            f"mood={state.mood} mode={state.conversation_mode} support={state.support_need:.2f}",
-            {
-                "state": state.to_dict(),
-                "transition": transition.to_event_payload(),
-            },
-            trace_id=trace_id,
-            now=now,
-        )
-        prompt_event = make_event(
-            "prompt_built",
-            f"messages={len(prompt_package.messages)}",
-            {"prompt": prompt_package.to_trace_dict()},
-            trace_id=trace_id,
-            now=now,
-        )
-        proactive_decision = self.proactive_engine.evaluate(
-            state=state,
-            recent_events=recent_events + [user_event, assistant_event, state_event],
-            memory_hits=memory_hits,
-            now=now,
-            trace_id=trace_id,
-        )
-        proactive_event = make_event(
-            "proactive_decision",
-            proactive_decision.signal.reason,
-            proactive_decision.to_trace_dict(),
-            trace_id=trace_id,
-            now=now,
-        )
+        with self.store.atomic():
+            memory_records = [
+                self.store.write_memory(record, trace_id=trace_id, emit_audit=True)
+                for record in memory_result.records
+            ]
+            transition = self.state_engine.apply_turn(
+                state,
+                user_text=clean_user_text,
+                assistant_text=parsed.reply,
+                memory_records=memory_records,
+                risk_flags=risk_flags,
+                now=now,
+            )
+            model_event = make_event(
+                "model_call",
+                _shorten(parsed.reply, 80),
+                {
+                    "model": self.config.model if not self.config.mock else "mock",
+                    "mock": self.config.mock,
+                    "message_count": len(prompt_package.messages),
+                    "prompt": prompt_package.to_trace_dict(),
+                },
+                trace_id=trace_id,
+                now=now,
+                actor="model",
+            )
+            memory_event = make_event(
+                "memory_extracted",
+                f"{len(memory_records)} 条记忆",
+                {
+                    "source_event_id": user_event.event_id,
+                    "extraction": memory_result.to_trace_dict(),
+                    "records": [record.to_dict() for record in memory_records],
+                },
+                trace_id=trace_id,
+                now=now,
+            )
+            state_event = make_event(
+                "state_transition",
+                f"mood={state.mood} mode={state.conversation_mode} support={state.support_need:.2f}",
+                {
+                    "state": state.to_dict(),
+                    "transition": transition.to_event_payload(),
+                },
+                trace_id=trace_id,
+                now=now,
+            )
+            prompt_event = make_event(
+                "prompt_built",
+                f"messages={len(prompt_package.messages)}",
+                {"prompt": prompt_package.to_trace_dict()},
+                trace_id=trace_id,
+                now=now,
+            )
+            proactive_decision = self.proactive_engine.evaluate(
+                state=state,
+                recent_events=recent_events + [user_event, assistant_event, state_event],
+                memory_hits=memory_hits,
+                now=now,
+                trace_id=trace_id,
+            )
+            proactive_event = make_event(
+                "proactive_decision",
+                proactive_decision.signal.reason,
+                proactive_decision.to_trace_dict(),
+                trace_id=trace_id,
+                now=now,
+            )
 
-        for event in (prompt_event, user_event, model_event, assistant_event, memory_event, state_event, proactive_event):
-            self.store.append_event(event)
-        self.store.save_state(state)
+            self.store.append_raw_message(
+                message_id=user_event.event_id,
+                trace_id=trace_id,
+                turn_id=turn_id,
+                role="user",
+                content=clean_user_text,
+                created_at=user_event.created_at,
+                source_event_id=user_event.event_id,
+            )
+            self.store.append_raw_message(
+                message_id=assistant_event.event_id,
+                trace_id=trace_id,
+                turn_id=turn_id,
+                role="assistant",
+                content=parsed.reply,
+                created_at=assistant_event.created_at,
+                source_event_id=assistant_event.event_id,
+            )
+            for event in (prompt_event, user_event, model_event, assistant_event, memory_event, state_event, proactive_event):
+                self.store.append_event(event)
+            self.store.save_state(state)
         proactive_signal = proactive_decision.signal
         return {
             "role_thinking": parsed.role_thinking,
@@ -366,6 +379,85 @@ class CompanionRuntime:
     def update_notification_preferences(self, updates: dict[str, Any]) -> dict[str, object]:
         return self.scheduling.update_notification_preferences(updates)
 
+    def companion_settings(self) -> dict[str, object]:
+        return self._public_companion_settings(self._refresh_companion_settings())
+
+    def update_companion_settings(self, updates: dict[str, Any]) -> dict[str, object]:
+        if not isinstance(updates, dict):
+            raise ValueError("settings must be a JSON object")
+        allowed = {
+            "base_url", "api_key", "clear_api_key", "model", "temperature",
+            "max_tokens", "companion_prompt",
+        }
+        unknown = sorted(set(updates) - allowed)
+        if unknown:
+            raise ValueError(f"unsupported settings: {', '.join(unknown)}")
+
+        stored = self.store.read_companion_settings()
+        candidate = {key: value for key, value in stored.items() if key != "updated_at"}
+        for key in ("base_url", "model", "companion_prompt"):
+            if key in updates:
+                if not isinstance(updates[key], str):
+                    raise ValueError(f"{key} must be a string")
+                candidate[key] = updates[key].strip()
+        if "api_key" in updates:
+            if not isinstance(updates["api_key"], str):
+                raise ValueError("api_key must be a string")
+            if updates["api_key"].strip():
+                candidate["api_key"] = updates["api_key"].strip()
+        if updates.get("clear_api_key") is True:
+            candidate["api_key"] = ""
+        for key in ("temperature", "max_tokens"):
+            if key in updates:
+                candidate[key] = updates[key]
+
+        effective = self._effective_companion_settings(candidate)
+        _validate_companion_settings(effective)
+        stored = self.store.save_companion_settings(candidate)
+        effective = self._apply_companion_settings(stored)
+        return self._public_companion_settings(effective, updated_at=str(stored.get("updated_at", "")))
+
+    def _refresh_companion_settings(self) -> dict[str, Any]:
+        return self._apply_companion_settings(self.store.read_companion_settings())
+
+    def _effective_companion_settings(self, stored: dict[str, Any]) -> dict[str, Any]:
+        return {
+            **self._default_companion_settings,
+            **{key: value for key, value in stored.items() if key != "updated_at"},
+        }
+
+    def _apply_companion_settings(self, stored: dict[str, Any]) -> dict[str, Any]:
+        effective = self._effective_companion_settings(stored)
+        _validate_companion_settings(effective)
+        self.config.base_url = str(effective["base_url"])
+        self.config.api_key = str(effective["api_key"])
+        self.config.model = str(effective["model"])
+        self.config.temperature = float(effective["temperature"])
+        self.config.max_tokens = int(effective["max_tokens"])
+        self.prompt_builder.set_companion_prompt(str(effective["companion_prompt"]))
+        return effective
+
+    def _public_companion_settings(
+        self, effective: dict[str, Any], *, updated_at: str | None = None,
+    ) -> dict[str, object]:
+        return {
+            "llm": {
+                "base_url": str(effective["base_url"]),
+                "model": str(effective["model"]),
+                "temperature": float(effective["temperature"]),
+                "max_tokens": int(effective["max_tokens"]),
+                "api_key_configured": bool(effective["api_key"]),
+                "configured": bool(effective["base_url"] and effective["api_key"] and effective["model"]),
+            },
+            "companion": {
+                "instructions": str(effective["companion_prompt"]),
+                "customized": bool(effective["companion_prompt"]),
+            },
+            "updated_at": updated_at
+            if updated_at is not None
+            else str(self.store.read_companion_settings().get("updated_at", "")),
+        }
+
     def create_task(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self.life_flow.create_task(payload)
 
@@ -450,9 +542,17 @@ class CompanionRuntime:
     def process_due_reminders(self, *, now: datetime | None = None, limit: int = 20) -> dict[str, object]:
         now = now or self.clock()
         claimed = self.store.claim_due_reminders(now=now, limit=limit)
-        drafted: list[str] = []
+        queued: list[str] = []
+        already_queued: list[str] = []
         held: list[dict[str, object]] = []
         for reminder in claimed:
+            occurrence_key = f"{reminder.reminder_id}:{reminder.due_at}"
+            occurrence_hash = hashlib.sha256(occurrence_key.encode("utf-8")).hexdigest()[:16]
+            idempotency_key = f"reminder:{occurrence_key}"
+            existing = self.store.get_outbox_by_idempotency_key(idempotency_key)
+            if existing is not None:
+                already_queued.append(str(existing["message_id"]))
+                continue
             trace_id = new_event_id("trace")
             state = self.store.load_state()
             risk_level = str(getattr(state, "risk_level", ""))
@@ -469,31 +569,48 @@ class CompanionRuntime:
                 held.append({"reminder_id": reminder.reminder_id, "hold_reasons": holds, "trace_id": trace_id})
                 continue
             message = f"提醒你：{reminder.title}" + (f"\n{reminder.description}" if reminder.description else "")
-            message_id = f"reminder_{reminder.reminder_id}"
-            self.store.append_outbox(
-                {
-                    "message_id": message_id,
-                    "signal_id": reminder.reminder_id,
-                    "trace_id": trace_id,
-                    "channel": "internal",
-                    "draft_text": message,
-                    "status": "drafted",
-                    "reason": "scheduled_reminder",
-                    "signal_type": reminder.kind.value,
-                    "created_at": utc_now_iso(now),
-                    "idempotency_key": f"reminder:{reminder.reminder_id}",
-                    "payload": {"reminder": reminder.to_dict(), "proactive_kind": reminder.kind.value, "preferences": preferences},
-                }
-            )
-            delivered = self.store.mark_reminder_delivered(reminder.reminder_id, now=now)
-            event = make_event(
-                "reminder_outbox_drafted", reminder.title,
-                {"reminder": delivered.to_dict() if delivered else reminder.to_dict(), "message_id": message_id, "proactive_kind": reminder.kind.value, "preferences": preferences},
-                trace_id=trace_id, now=now, source_ids=[reminder.reminder_id, message_id],
-            )
-            self.store.append_event(event)
-            drafted.append(message_id)
-        return {"claimed": [item.reminder_id for item in claimed], "drafted": drafted, "held": held}
+            message_id = f"reminder_{reminder.reminder_id}_{occurrence_hash}"
+            with self.store.atomic():
+                # Recheck while holding the write lock so concurrent workers
+                # cannot create an orphan event/raw message for the same
+                # recurring occurrence.
+                existing = self.store.get_outbox_by_idempotency_key(idempotency_key)
+                if existing is not None:
+                    already_queued.append(str(existing["message_id"]))
+                    continue
+                self.store.append_outbox(
+                    {
+                        "message_id": message_id,
+                        "signal_id": reminder.reminder_id,
+                        "trace_id": trace_id,
+                        "channel": "internal",
+                        "draft_text": message,
+                        "status": "queued",
+                        "reason": "scheduled_reminder",
+                        "signal_type": reminder.kind.value,
+                        "created_at": utc_now_iso(now),
+                        "idempotency_key": idempotency_key,
+                        "payload": {"reminder": reminder.to_dict(), "proactive_kind": reminder.kind.value, "preferences": preferences},
+                    }
+                )
+                event = make_event(
+                    "reminder_outbox_queued", reminder.title,
+                    {"reminder": reminder.to_dict(), "message_id": message_id, "proactive_kind": reminder.kind.value, "preferences": preferences},
+                    trace_id=trace_id, now=now, source_ids=[reminder.reminder_id, message_id],
+                )
+                self.store.append_event(event)
+                self.store.append_raw_message(
+                    message_id=f"raw_{message_id}", trace_id=trace_id, turn_id=trace_id,
+                    role="assistant", content=message, created_at=utc_now_iso(now), source_event_id=event.event_id,
+                )
+            queued.append(message_id)
+        return {
+            "claimed": [item.reminder_id for item in claimed],
+            "queued": queued,
+            "drafted": queued,
+            "already_queued": already_queued,
+            "held": held,
+        }
 
     def record_outbox_feedback(
         self,
@@ -511,39 +628,40 @@ class CompanionRuntime:
         else:
             replied_at_iso = ""
             feedback_now = self.clock()
-        outbox = self.store.record_outbox_feedback(
-            message_id,
-            status,
-            feedback_text=feedback_text,
-            replied_at=replied_at_iso or None,
-        )
-        if outbox is None:
-            return {"ok": False, "message_id": message_id, "reason": "not_found"}
-        state = self.store.load_state()
-        transition = self.state_engine.apply_proactive_feedback(
-            state,
-            feedback_status=status,
-            feedback_text=feedback_text,
-            sent_at=str(outbox.get("sent_at", "")),
-            replied_at=str(outbox.get("replied_at", "")) or replied_at_iso,
-            now=feedback_now,
-        )
-        self.store.save_state(state)
-        event = make_event(
-            "proactive_feedback",
-            status,
-            {
-                "message_id": message_id,
-                "status": status,
-                "feedback_text": feedback_text,
-                "outbox": outbox,
-                "state_transition": transition.to_event_payload(),
-            },
-            trace_id=new_event_id("trace"),
-            now=feedback_now,
-            source_ids=[message_id],
-        )
-        self.store.append_event(event)
+        with self.store.atomic():
+            outbox = self.store.record_outbox_feedback(
+                message_id,
+                status,
+                feedback_text=feedback_text,
+                replied_at=replied_at_iso or None,
+            )
+            if outbox is None:
+                return {"ok": False, "message_id": message_id, "reason": "not_found"}
+            state = self.store.load_state()
+            transition = self.state_engine.apply_proactive_feedback(
+                state,
+                feedback_status=status,
+                feedback_text=feedback_text,
+                sent_at=str(outbox.get("sent_at", "")),
+                replied_at=str(outbox.get("replied_at", "")) or replied_at_iso,
+                now=feedback_now,
+            )
+            self.store.save_state(state)
+            event = make_event(
+                "proactive_feedback",
+                status,
+                {
+                    "message_id": message_id,
+                    "status": status,
+                    "feedback_text": feedback_text,
+                    "outbox": outbox,
+                    "state_transition": transition.to_event_payload(),
+                },
+                trace_id=new_event_id("trace"),
+                now=feedback_now,
+                source_ids=[message_id],
+            )
+            self.store.append_event(event)
         return {
             "ok": True,
             "message_id": message_id,
@@ -633,20 +751,21 @@ class CompanionRuntime:
                     "decision": decision.to_trace_dict(),
                     "notification": {},
                 }
-            message = signal.draft_message or self.draft_proactive_message(state, recent_events, signal, now=now)
-            notification_delivery = self.notification_bridge.deliver(
-                message=message,
-                signal=signal,
-                trace_id=trace_id,
-                now=now,
-                title=state.persona_name or "叶筝",
+            message = signal.draft_message or self.draft_proactive_message(
+                state, recent_events, trace_id=trace_id, now=now,
             )
-            state.mark_proactive_contact(now)
-            self.store.save_state(state)
-            outbox_status = "failed" if notification_delivery.attempted and not notification_delivery.ok else "sent"
-            outbox_channel = notification_delivery.channel or "internal"
+            notification_delivery = NotificationDelivery(
+                channel="internal",
+                provider="",
+                status="queued",
+                attempted=False,
+                ok=False,
+                receipt_type="notification_queued",
+                detail="queued_for_worker",
+                occurred_at=utc_now_iso(now),
+            )
             sent_event = make_event(
-                "proactive_message_sent",
+                "proactive_message_queued",
                 _shorten(message, 80),
                 {
                     "message": message,
@@ -657,45 +776,46 @@ class CompanionRuntime:
                 trace_id=trace_id,
                 now=now,
             )
-            self.store.append_event(sent_event)
-            delivery_receipts = [notification_delivery.to_receipt(sent_event.event_id)]
-            self.store.append_outbox(
-                {
-                    "message_id": sent_event.event_id,
-                    "signal_id": trace_id,
-                    "trace_id": trace_id,
-                    "channel": outbox_channel,
-                    "created_at": utc_now_iso(now),
-                    "draft_text": message,
-                    "status": outbox_status,
-                    "score": signal.score,
-                    "reason": signal.reason,
-                    "signal_type": signal.signal_type,
-                    "anchor_memory_ids": list(signal.anchor_memory_ids),
-                    "sent_at": utc_now_iso(now) if outbox_status == "sent" else "",
-                    "notification": notification_delivery.to_dict(),
-                    "delivery_receipts": delivery_receipts,
-                    "payload": {
-                        "message": message,
-                        "signal": signal.to_dict(),
-                        "notification": notification_delivery.to_dict(),
-                        "delivery_receipts": delivery_receipts,
-                    },
-                }
-            )
-            if notification_delivery.attempted:
-                notification_event = make_event(
-                    "proactive_notification_delivered" if notification_delivery.ok else "proactive_notification_failed",
-                    notification_delivery.detail or notification_delivery.status,
+            delivery_receipts: list[dict[str, object]] = []
+            # Persist the delivery intent before any provider call.  The worker is
+            # the sole delivery owner, so a crash cannot lose a successful send or
+            # cause proactive_tick to send the same message twice.
+            with self.store.atomic():
+                self.store.append_outbox(
                     {
                         "message_id": sent_event.event_id,
-                        "delivery": notification_delivery.to_dict(),
-                    },
-                    trace_id=trace_id,
-                    now=now,
-                    source_ids=[sent_event.event_id],
+                        "signal_id": trace_id,
+                        "trace_id": trace_id,
+                        "channel": "internal",
+                        "created_at": utc_now_iso(now),
+                        "draft_text": message,
+                        "status": "queued",
+                        "score": signal.score,
+                        "reason": signal.reason,
+                        "signal_type": signal.signal_type,
+                        "anchor_memory_ids": list(signal.anchor_memory_ids),
+                        "sent_at": "",
+                        "delivered_at": "",
+                        "delivery_attempts": 0,
+                        "last_attempt_at": "",
+                        "last_error": "",
+                        "notification": notification_delivery.to_dict(),
+                        "delivery_receipts": delivery_receipts,
+                        "payload": {
+                            "message": message,
+                            "signal": signal.to_dict(),
+                            "notification": notification_delivery.to_dict(),
+                            "delivery_receipts": delivery_receipts,
+                        },
+                    }
                 )
-                self.store.append_event(notification_event)
+                self.store.append_event(sent_event)
+                self.store.append_raw_message(
+                    message_id=f"raw_{sent_event.event_id}", trace_id=trace_id, turn_id=trace_id,
+                    role="assistant", content=message, created_at=utc_now_iso(now), source_event_id=sent_event.event_id,
+                )
+                state.mark_proactive_contact(now)
+                self.store.save_state(state)
             signal = ProactiveSignal(
                 due=True,
                 score=signal.score,
@@ -737,6 +857,7 @@ class CompanionRuntime:
         trace_id: str | None = None,
         now: datetime | None = None,
     ) -> str:
+        self._refresh_companion_settings()
         now = now or self.clock()
         trace_id = trace_id or new_event_id("trace")
         if self.config.mock or not self.config.llm_configured:
@@ -753,6 +874,16 @@ class CompanionRuntime:
             if draft:
                 messages = [
                     {"role": "system", "content": PROACTIVE_SYSTEM_PROMPT},
+                ]
+                if self.prompt_builder.companion_prompt:
+                    messages.append({
+                        "role": "system",
+                        "content": (
+                            "沿用用户自定义的伴侣角色与表达偏好，但仍遵守低频主动联系、安全和现实边界：\n\n"
+                            f"{self.prompt_builder.companion_prompt}"
+                        ),
+                    })
+                messages.append(
                     {
                         "role": "user",
                         "content": (
@@ -763,8 +894,8 @@ class CompanionRuntime:
                             + "\n".join(f"- {event.event_type}: {event.summary}" for event in list(recent_events)[-6:])
                             + "\n\n请输出一条 18 到 60 字的主动联系消息。"
                         ),
-                    },
-                ]
+                    }
+                )
                 draft = self.client.complete(messages).strip()
                 draft = _strip_wrapped_tags(draft)
                 return draft or _template_proactive_message(state, recent_events)
@@ -781,6 +912,14 @@ class CompanionRuntime:
         recent_events: Sequence[ConversationEvent],
     ) -> list[Message]:
         messages: list[Message] = [{"role": "system", "content": SYSTEM_PROMPT}]
+        if self.prompt_builder.companion_prompt:
+            messages.append({
+                "role": "system",
+                "content": (
+                    "以下是用户自定义的伴侣角色与表达偏好；在不违反安全和现实边界时以此为准：\n\n"
+                    f"{self.prompt_builder.companion_prompt}"
+                ),
+            })
         context_lines = [state.prompt_block()]
         if memory_hits:
             context_lines.append("")
@@ -803,6 +942,41 @@ class CompanionRuntime:
             messages.append({"role": role, "content": content[:1200]})
         messages.append({"role": "user", "content": user_text[:3000]})
         return messages
+
+
+def _validate_companion_settings(settings: dict[str, Any]) -> None:
+    base_url = str(settings.get("base_url", "")).strip()
+    api_key = str(settings.get("api_key", ""))
+    model = str(settings.get("model", "")).strip()
+    instructions = str(settings.get("companion_prompt", "")).strip()
+    if len(base_url) > 2048:
+        raise ValueError("base_url is too long")
+    if base_url:
+        parsed = urlparse(base_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise ValueError("base_url must be an http or https URL")
+        if parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise ValueError("base_url must not contain credentials, query, or fragment")
+    if len(api_key) > 4096:
+        raise ValueError("api_key is too long")
+    if len(model) > 256:
+        raise ValueError("model is too long")
+    if len(instructions) > 12000:
+        raise ValueError("companion_prompt is too long")
+    try:
+        temperature = float(settings.get("temperature", 0.7))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("temperature must be a number") from exc
+    if not math.isfinite(temperature) or not 0 <= temperature <= 2:
+        raise ValueError("temperature must be between 0 and 2")
+    try:
+        max_tokens = int(settings.get("max_tokens", 768))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("max_tokens must be an integer") from exc
+    if isinstance(settings.get("max_tokens"), float) and not settings["max_tokens"].is_integer():
+        raise ValueError("max_tokens must be an integer")
+    if not 1 <= max_tokens <= 32768:
+        raise ValueError("max_tokens must be between 1 and 32768")
 
 
 def _risk_flags(user_text: str, assistant_text: str) -> list[str]:

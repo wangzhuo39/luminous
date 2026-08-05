@@ -35,6 +35,7 @@ import {
   saveRecoverableDraft,
 } from './features/productization/draft-recovery.js';
 import { initPwaExperience } from './features/productization/pwa-controller.js';
+import { initNativeNotifications } from './features/productization/native-notifications-controller.js';
 import { initSpaceRouter } from './features/productization/space-router.js';
 import { mountMainSceneShell } from './features/main-scene/main-scene-shell.js';
 import { createMainSceneView } from './features/main-scene/main-scene-view.js';
@@ -51,6 +52,7 @@ let renderAction = () => {};
 let renderSilentSpaces = () => {};
 let renderProductization = () => {};
 let silentSpacesSummary = () => ({ memoryCount: 0, outboxUnread: false, dnd: false });
+let activateSilentSpace = () => {};
 let sceneEnvironment = { update() {}, destroy() {} };
 let sceneParallax = { setSuspended() {}, destroy() {} };
 const mainSceneView = createMainSceneView(dom);
@@ -161,6 +163,7 @@ function render() {
   mainSceneView.renderConversation(current.viewModels.conversation, current.conversation.draft);
   renderLifeFlow(current.lifeFlow);
   renderAction();
+  activateSilentSpace(current.activeSpace);
   renderSilentSpaces();
   renderProductization(current);
   renderOverlays(current.activeSpace);
@@ -220,6 +223,7 @@ async function main() {
     announce,
     onStateChange: render,
   });
+  activateSilentSpace = (space) => silentSpacesController.activate(space);
   renderSilentSpaces = () => silentSpacesController.render();
   silentSpacesSummary = () => silentSpacesController.summary();
   const actionView = createActionView(dom.action, {
@@ -442,6 +446,7 @@ async function main() {
       return current.conversation.chatStatus === 'submitting' || resourceBusy || activelyWriting;
     },
   });
+  const nativeNotifications = initNativeNotifications();
   renderProductization = () => pwaExperience.render();
   render();
   const conversation = initConversation(dom, {
@@ -483,6 +488,7 @@ async function main() {
     actionView.destroy();
     silentSpacesController.destroy();
     pwaExperience.destroy();
+    nativeNotifications.destroy();
     spaceRouter.destroy();
     delete window.__luminousActionFixture;
     todayView.destroy();

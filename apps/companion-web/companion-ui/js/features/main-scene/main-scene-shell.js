@@ -4,9 +4,9 @@ const headerMarkup = `
   <header class="top-scene-header" aria-label="场景与陪伴者状态">
     <div class="scene-clock-block">
       <div class="scene-clock-line">
-        <time class="scene-clock" datetime="20:41">20:41</time>
+        <time class="scene-clock" datetime="" data-hook="scene-clock">--:--</time>
         <span class="scene-crescent" aria-hidden="true"></span>
-        <span class="scene-period">夜晚</span>
+        <span class="scene-period" data-hook="scene-period">此刻</span>
       </div>
       <p class="scene-weather">外面有点凉，记得添衣</p>
     </div>
@@ -47,15 +47,15 @@ const statusMarkup = `
     <div class="companion-status-content">
       <article class="companion-status-item">
         <span class="status-orb status-orb-heart" aria-hidden="true"><img class="status-orb-art" src="assets/generated/status-heart-orb.png" alt=""></span>
-        <span class="status-copy"><strong>心跳平稳</strong><small>72 次/分</small></span>
+        <span class="status-copy"><strong data-hook="companion-heart-label">心跳平稳</strong><small data-hook="companion-heart-detail">72 次/分</small></span>
       </article>
       <article class="companion-status-item">
         <span class="status-orb status-orb-rain" aria-hidden="true"><img class="status-orb-art" src="assets/generated/status-rain-orb.png" alt=""></span>
-        <span class="status-copy"><strong>正在看雨</strong><small>窗边 · 雨声轻轻</small></span>
+        <span class="status-copy"><strong data-hook="companion-activity-label">正在看雨</strong><small data-hook="companion-activity-detail">窗边 · 雨声轻轻</small></span>
       </article>
       <article class="companion-status-item">
         <span class="status-orb status-orb-moon" aria-hidden="true"><img class="status-orb-art" src="assets/generated/status-quiet-orb.png" alt=""></span>
-        <span class="status-copy"><strong>有点安静</strong><small>心情平静</small></span>
+        <span class="status-copy"><strong data-hook="companion-mood-label">有点安静</strong><small data-hook="companion-mood-detail">心情平静</small></span>
       </article>
     </div>
   </section>

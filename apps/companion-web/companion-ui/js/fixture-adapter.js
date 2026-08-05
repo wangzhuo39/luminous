@@ -16,6 +16,14 @@ function adaptScene(fixture) {
   return {
     caption: safeText(fixture?.presence_caption, '陪伴者静静地在场。'),
     tone: VISUAL_TONES.has(tone) ? tone : 'unknown',
+    status: {
+      heartLabel: '心跳平稳',
+      heartDetail: '72 次/分',
+      activityLabel: '正在看雨',
+      activityDetail: '窗边 · 雨声轻轻',
+      moodLabel: '有点安静',
+      moodDetail: '心情平静',
+    },
   };
 }
 

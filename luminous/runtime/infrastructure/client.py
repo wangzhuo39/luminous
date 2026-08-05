@@ -24,7 +24,7 @@ class ModelClient:
 
     def complete(self, messages: Sequence[Message]) -> str:
         if not self.config.llm_configured:
-            raise ModelClientError("LLM is not configured; set OPENAI_BASE_URL, OPENAI_API_KEY and OPENAI_MODEL")
+            raise ModelClientError("LLM is not configured; add an API connection in companion settings or server environment")
         try:
             return self.transport(self.config, messages)
         except ModelClientError:

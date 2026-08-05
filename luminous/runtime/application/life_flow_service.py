@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from functools import wraps
+from typing import Any, Callable
 
 from luminous.runtime.application.scheduling_service import SchedulingService
 from luminous.runtime.domain.activity import (
@@ -18,10 +20,29 @@ from luminous.runtime.domain.activity import (
     TaskStatus,
     TaskStep,
 )
-from luminous.runtime.domain.events import make_event, new_event_id
+from luminous.runtime.domain.events import ConversationEvent, make_event, new_event_id
 from luminous.runtime.domain.time import parse_iso_datetime, utc_now_iso
 from luminous.runtime.infrastructure.life_flow_store import LifeFlowStore
 from luminous.runtime.infrastructure.runtime_store import CompanionRuntimeStore
+
+
+logger = logging.getLogger(__name__)
+
+
+def _durable_mutation(
+    method: Callable[..., dict[str, Any]],
+) -> Callable[..., dict[str, Any]]:
+    """Atomically commit a life-flow mutation and its audit intent."""
+
+    @wraps(method)
+    def wrapped(self: "LifeFlowService", *args: Any, **kwargs: Any) -> dict[str, Any]:
+        with self.store.atomic():
+            result = method(self, *args, **kwargs)
+        self.flush_effect_outbox()
+        self.flush_audit_outbox()
+        return result
+
+    return wrapped
 
 
 class LifeFlowService:
@@ -40,11 +61,11 @@ class LifeFlowService:
         self.scheduling = scheduling
         self.clock = clock or (lambda: datetime.now(timezone.utc))
 
+    @_durable_mutation
     def create_task(self, payload: dict[str, Any]) -> dict[str, Any]:
         now = self._now()
         task = Task.create({**payload, "source": str(payload.get("source", "manual"))}, now=utc_now_iso(now))
-        self.store.save_task(task)
-        task = self._attach_schedule(task, payload, now=now)
+        task = self._plan_task_schedule(task, payload, now=now)
         self.store.save_task(task)
         self._audit("task_created", task.title, {"task": task.to_dict()}, source_ids=[task.task_id], now=now)
         return {"ok": True, "task": self._task_payload(task)}
@@ -55,6 +76,7 @@ class LifeFlowService:
     def get_task(self, task_id: str) -> dict[str, Any]:
         return {"ok": True, "task": self._task_payload(self._require_task(task_id))}
 
+    @_durable_mutation
     def update_task(self, task_id: str, updates: dict[str, Any]) -> dict[str, Any]:
         current = self._require_task(task_id)
         now = self._now()
@@ -66,6 +88,7 @@ class LifeFlowService:
         self._audit("task_updated", task.title, {"task": task.to_dict(), "updates": clean}, source_ids=[task_id], now=now)
         return {"ok": True, "task": self._task_payload(task)}
 
+    @_durable_mutation
     def transition_task(self, task_id: str, action: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
         target = {"start": TaskStatus.IN_PROGRESS.value, "complete": TaskStatus.COMPLETED.value, "block": TaskStatus.BLOCKED.value, "cancel": TaskStatus.CANCELLED.value}.get(action)
         if target is None:
@@ -76,10 +99,16 @@ class LifeFlowService:
         self.store.save_task(task)
         if target in {TaskStatus.COMPLETED.value, TaskStatus.CANCELLED.value}:
             for reminder_id in task.reminder_ids:
-                self.scheduling.cancel_reminder(reminder_id)
+                self.store.enqueue_effect(
+                    self._stable_id("effect_cancel_reminder", task.task_id, reminder_id),
+                    "cancel_reminder",
+                    {"reminder_id": reminder_id},
+                    now=now,
+                )
         self._audit(f"task_{action}", task.title, {"task": task.to_dict(), "action": action}, source_ids=[task_id, *task.reminder_ids], now=now)
         return {"ok": True, "task": self._task_payload(task)}
 
+    @_durable_mutation
     def add_task_step(self, task_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         task = self._require_task(task_id)
         now = self._now()
@@ -89,6 +118,7 @@ class LifeFlowService:
         self._audit("task_step_created", step.title, {"task_id": task_id, "step": step.to_dict()}, source_ids=[task_id, step.step_id], now=now)
         return {"ok": True, "step": step.to_dict()}
 
+    @_durable_mutation
     def update_task_step(self, task_id: str, step_id: str, updates: dict[str, Any]) -> dict[str, Any]:
         self._require_task(task_id)
         current = self.store.get_task_step(step_id)
@@ -103,6 +133,7 @@ class LifeFlowService:
         self._audit("task_step_updated", step.title, {"task_id": task_id, "step": step.to_dict()}, source_ids=[task_id, step_id], now=self._now())
         return {"ok": True, "step": step.to_dict()}
 
+    @_durable_mutation
     def create_routine(self, payload: dict[str, Any]) -> dict[str, Any]:
         now = self._now()
         routine = Routine.create(payload, now=utc_now_iso(now))
@@ -116,6 +147,7 @@ class LifeFlowService:
     def get_routine(self, routine_id: str) -> dict[str, Any]:
         return {"ok": True, "routine": self._routine_payload(self._require_routine(routine_id))}
 
+    @_durable_mutation
     def update_routine(self, routine_id: str, updates: dict[str, Any]) -> dict[str, Any]:
         current = self._require_routine(routine_id)
         now = self._now()
@@ -125,6 +157,7 @@ class LifeFlowService:
         self._audit("routine_updated", routine.title, {"routine": routine.to_dict()}, source_ids=[routine_id], now=now)
         return {"ok": True, "routine": self._routine_payload(routine)}
 
+    @_durable_mutation
     def checkin_routine(self, routine_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
         routine = self._require_routine(routine_id)
         now = self._now()
@@ -144,6 +177,7 @@ class LifeFlowService:
         self._audit("routine_checked_in", routine.title, {"routine_id": routine_id, "checkin": saved.to_dict()}, source_ids=[routine_id, saved.checkin_id], now=now)
         return {"ok": True, "checkin": saved.to_dict(), "streak": self._streak(routine)}
 
+    @_durable_mutation
     def create_activity(self, payload: dict[str, Any]) -> dict[str, Any]:
         now = self._now()
         if payload.get("task_id"):
@@ -159,6 +193,7 @@ class LifeFlowService:
     def get_activity(self, session_id: str) -> dict[str, Any]:
         return {"ok": True, "activity": self._require_session(session_id).to_dict()}
 
+    @_durable_mutation
     def transition_activity(self, session_id: str, action: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
         target = {"start": SessionStatus.ACTIVE.value, "pause": SessionStatus.PAUSED.value, "resume": SessionStatus.ACTIVE.value, "complete": SessionStatus.COMPLETED.value, "cancel": SessionStatus.CANCELLED.value}.get(action)
         if target is None:
@@ -170,6 +205,7 @@ class LifeFlowService:
         self._audit(f"activity_{action}", session.title, {"activity": session.to_dict(), "action": action}, source_ids=[session_id, *([session.task_id] if session.task_id else [])], now=now)
         return {"ok": True, "activity": session.to_dict()}
 
+    @_durable_mutation
     def create_diary_entry(self, payload: dict[str, Any]) -> dict[str, Any]:
         now = self._now()
         entry = DiaryEntry.create(payload, now=utc_now_iso(now))
@@ -186,6 +222,7 @@ class LifeFlowService:
             raise ValueError("diary entry not found")
         return {"ok": True, "diary_entry": entry.to_dict()}
 
+    @_durable_mutation
     def update_diary_entry(self, entry_id: str, updates: dict[str, Any]) -> dict[str, Any]:
         current = self.store.get_diary_entry(entry_id)
         if current is None:
@@ -258,6 +295,7 @@ class LifeFlowService:
         filtered.sort(key=lambda item: (str(item["occurred_at"]), str(item["item_id"])), reverse=True)
         return {"ok": True, "items": filtered[:max(1, min(limit, 500))]}
 
+    @_durable_mutation
     def process_due_routines(self, *, now: datetime | None = None) -> dict[str, Any]:
         now = now or self._now()
         created: list[dict[str, Any]] = []
@@ -269,12 +307,28 @@ class LifeFlowService:
             self.store.save_checkin(pending)
             reminder: dict[str, Any] = {}
             if routine.reminder_policy == "remind":
-                result = self.scheduling.create_reminder({"title": routine.title, "description": "今天别忘了完成这次打卡。", "due_at": utc_now_iso(now), "source": "routine", "source_ref": routine.routine_id, "kind": "routine", "metadata": {"routine_id": routine.routine_id, "period_key": period}})
-                reminder = dict(result.get("reminder", {}) or {})
+                reminder_id = self._stable_id("reminder_routine", routine.routine_id, period)
+                reminder = {
+                    "reminder_id": reminder_id,
+                    "title": routine.title,
+                    "description": "今天别忘了完成这次打卡。",
+                    "due_at": utc_now_iso(now),
+                    "source": "routine",
+                    "source_ref": routine.routine_id,
+                    "kind": "routine",
+                    "metadata": {"routine_id": routine.routine_id, "period_key": period},
+                }
+                self.store.enqueue_effect(
+                    self._stable_id("effect_create_reminder", reminder_id),
+                    "create_reminder",
+                    reminder,
+                    now=now,
+                )
             created.append({"routine_id": routine.routine_id, "checkin": pending.to_dict(), "reminder": reminder})
             self._audit("routine_due", routine.title, {"routine_id": routine.routine_id, "period_key": period, "reminder": reminder}, source_ids=[routine.routine_id, pending.checkin_id], now=now)
         return {"ok": True, "items": created}
 
+    @_durable_mutation
     def expire_activities(self, *, now: datetime | None = None) -> dict[str, Any]:
         now = now or self._now()
         expired: list[dict[str, Any]] = []
@@ -325,18 +379,44 @@ class LifeFlowService:
             return anchor.isoformat()
         return now.date().isoformat()
 
-    def _attach_schedule(self, task: Task, payload: dict[str, Any], *, now: datetime) -> Task:
+    def _plan_task_schedule(self, task: Task, payload: dict[str, Any], *, now: datetime) -> Task:
         values = task.to_dict()
         reminder_ids = list(task.reminder_ids)
         if bool(payload.get("create_calendar")) and task.due_at:
-            result = self.scheduling.create_calendar_event({"title": task.title, "starts_at": task.due_at, "ends_at": str(payload.get("ends_at", "")), "source": "task", "metadata": {"task_id": task.task_id}})
-            values["calendar_event_id"] = str(dict(result.get("calendar_event", {}) or {}).get("event_id", ""))
+            event_id = self._stable_id("calendar_task", task.task_id)
+            values["calendar_event_id"] = event_id
+            self.store.enqueue_effect(
+                self._stable_id("effect_create_calendar", event_id),
+                "create_calendar_event",
+                {
+                    "event_id": event_id,
+                    "title": task.title,
+                    "starts_at": task.due_at,
+                    "ends_at": str(payload.get("ends_at", "")),
+                    "metadata": {"task_id": task.task_id, "source": "task"},
+                },
+                now=now,
+            )
         reminder_at = str(payload.get("reminder_at", "")) or task.due_at
         if bool(payload.get("create_reminder")) and reminder_at:
-            result = self.scheduling.create_reminder({"title": task.title, "description": task.description, "due_at": reminder_at, "source": "task", "source_ref": task.task_id, "kind": "reminder", "metadata": {"task_id": task.task_id}})
-            reminder = dict(result.get("reminder", {}) or {})
-            if reminder.get("reminder_id"):
-                reminder_ids.append(str(reminder["reminder_id"]))
+            reminder_id = self._stable_id("reminder_task", task.task_id)
+            if reminder_id not in reminder_ids:
+                reminder_ids.append(reminder_id)
+            self.store.enqueue_effect(
+                self._stable_id("effect_create_reminder", reminder_id),
+                "create_reminder",
+                {
+                    "reminder_id": reminder_id,
+                    "title": task.title,
+                    "description": task.description,
+                    "due_at": reminder_at,
+                    "source": "task",
+                    "source_ref": task.task_id,
+                    "kind": "reminder",
+                    "metadata": {"task_id": task.task_id},
+                },
+                now=now,
+            )
         values["reminder_ids"] = reminder_ids
         values["updated_at"] = utc_now_iso(now)
         return Task.create(values)
@@ -382,7 +462,112 @@ class LifeFlowService:
         return session
 
     def _audit(self, event_type: str, summary: str, payload: dict[str, Any], *, source_ids: list[str], now: datetime) -> None:
-        self.runtime_store.append_event(make_event(event_type, summary, payload, trace_id=new_event_id("trace"), now=now, source_ids=source_ids))
+        event = make_event(
+            event_type,
+            summary,
+            payload,
+            trace_id=new_event_id("trace"),
+            now=now,
+            source_ids=source_ids,
+        )
+        self.store.enqueue_audit_event(event.to_dict())
+
+    def flush_audit_outbox(self, *, limit: int = 50) -> dict[str, Any]:
+        """Project durable life-flow events into the runtime event stream.
+
+        Delivery failures are recorded for the worker to retry and never turn an
+        already committed domain mutation into an HTTP failure.
+        """
+
+        try:
+            pending = self.store.read_pending_audit_events(limit=limit)
+        except Exception as exc:  # noqa: BLE001 - recovery must not fail callers.
+            logger.exception("failed to read life-flow audit outbox")
+            return {
+                "ok": False,
+                "attempted": 0,
+                "delivered": [],
+                "failed": [{"event_id": "", "error": type(exc).__name__}],
+            }
+
+        delivered: list[str] = []
+        failed: list[dict[str, str]] = []
+        for item in pending:
+            event_id = str(item.get("event_id", ""))
+            try:
+                event = ConversationEvent.from_dict(dict(item.get("event", {}) or {}))
+                self.runtime_store.append_event(event)
+                self.store.mark_audit_delivered(event_id)
+                delivered.append(event_id)
+            except Exception as exc:  # noqa: BLE001 - leave durable retry state.
+                try:
+                    self.store.mark_audit_failed(event_id, type(exc).__name__)
+                except Exception:  # noqa: BLE001 - preserve original failure.
+                    logger.exception("failed to mark life-flow audit retry", extra={"event_id": event_id})
+                logger.warning(
+                    "life-flow audit delivery deferred",
+                    extra={"event_id": event_id, "error_code": type(exc).__name__},
+                )
+                failed.append({"event_id": event_id, "error": type(exc).__name__})
+        return {
+            "ok": not failed,
+            "attempted": len(pending),
+            "delivered": delivered,
+            "failed": failed,
+        }
+
+    def flush_effect_outbox(self, *, limit: int = 50) -> dict[str, Any]:
+        """Apply durable cross-database scheduling effects idempotently."""
+
+        try:
+            pending = self.store.read_pending_effects(limit=limit)
+        except Exception as exc:  # noqa: BLE001 - recovery must not fail callers.
+            logger.exception("failed to read life-flow effect outbox")
+            return {
+                "ok": False,
+                "attempted": 0,
+                "delivered": [],
+                "failed": [{"effect_id": "", "error": type(exc).__name__}],
+            }
+
+        delivered: list[str] = []
+        failed: list[dict[str, str]] = []
+        for item in pending:
+            effect_id = str(item.get("effect_id", ""))
+            effect_type = str(item.get("effect_type", ""))
+            payload = dict(item.get("payload", {}) or {})
+            try:
+                if effect_type == "create_reminder":
+                    self.scheduling.create_reminder(payload)
+                elif effect_type == "create_calendar_event":
+                    self.scheduling.create_calendar_event(payload)
+                elif effect_type == "cancel_reminder":
+                    self.scheduling.cancel_reminder(str(payload.get("reminder_id", "")))
+                else:
+                    raise ValueError("unsupported life-flow effect")
+                self.store.mark_effect_delivered(effect_id)
+                delivered.append(effect_id)
+            except Exception as exc:  # noqa: BLE001 - leave durable retry state.
+                try:
+                    self.store.mark_effect_failed(effect_id, type(exc).__name__)
+                except Exception:  # noqa: BLE001 - preserve original failure.
+                    logger.exception("failed to mark life-flow effect retry", extra={"effect_id": effect_id})
+                logger.warning(
+                    "life-flow effect delivery deferred",
+                    extra={"effect_id": effect_id, "error_code": type(exc).__name__},
+                )
+                failed.append({"effect_id": effect_id, "error": type(exc).__name__})
+        return {
+            "ok": not failed,
+            "attempted": len(pending),
+            "delivered": delivered,
+            "failed": failed,
+        }
+
+    @staticmethod
+    def _stable_id(prefix: str, *parts: str) -> str:
+        digest = hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()[:24]
+        return f"{prefix}_{digest}"
 
     def _now(self) -> datetime:
         value = self.clock()

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'luminous-shell-v18';
+const CACHE_NAME = 'luminous-shell-v19';
 const SHELL_ASSETS = [
   './',
   './index.html',
@@ -94,6 +94,7 @@ const SHELL_ASSETS = [
   './js/features/silent-spaces/silent-spaces-view.js',
   './js/features/productization/draft-recovery.js',
   './js/features/productization/pwa-controller.js',
+  './js/features/productization/native-notifications-controller.js',
   './js/features/productization/space-router.js',
   './js/features/main-scene/main-scene-shell.js',
   './js/features/main-scene/scene-background.js',

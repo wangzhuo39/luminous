@@ -16,12 +16,13 @@
 - PromptBuilder：记忆目录、必要证据展开、状态摘要、关系摘要、输出协议和预算信息。
 - Worker / Trace：后台 tick、记忆整理、状态衰减、主动联系、outbox 投递、ledger / trace。
 
-当前网页端已完成 S1–S5：核心陪伴、生活流、静默空间与 PWA 产品化能力均已落地，并以“晶格温室”作为统一视觉基线。后续仍可演进为 app、Live2D/VRM、语音和更完整的伴侣空间，但新能力必须先建立用户安全接口与隐私边界。
+当前产品端为 Android App：核心陪伴、生活流、静默空间、系统通知和受限深链均由 Capacitor 客户端承载，并以“晶格温室”作为统一视觉基线。公网浏览器客户端已退役，只保留 Android 安装包下载页；网页资源继续作为 App 的共享 UI 源码与本地自动化测试基座。
 
 ## 项目边界
 
 - `luminous/runtime/`：栖光情感陪伴运行时。
-- `apps/companion-web/`：当前可运行网页端，包含晶格温室主场景、生活流、静默空间与 PWA 壳层。
+- `apps/companion-android/` 与 `android/`：Android 产品客户端、构建说明和原生工程。
+- `apps/companion-web/`：App 共享 UI 源码及本地浏览器验收基座，不再作为公网产品端。
 - `docs/front_design/`：前端设计理念、living architecture、S1–S5 实施记录和截图验收证据。
 - `docs/product/`：产品身份、命名和产品阶段文档。
 - `docs/research/`：AI 伴侣调研、进度审计、评测数据来源。
@@ -32,7 +33,7 @@
 
 Compatibility wrappers remain in `tools/` and `scripts/` for older commands, but new code should use the directories above.
 
-## 启动栖光网页端
+## 构建栖光 Android App
 
 后端读取 `.env` 或环境变量中的 OpenAI-compatible 配置：
 
@@ -40,13 +41,27 @@ Compatibility wrappers remain in `tools/` and `scripts/` for older commands, but
 - `OPENAI_API_KEY` or `key`
 - `OPENAI_MODEL` or `model`
 
-启动后端和静态网页：
+构建可安装的 Android 内测包：
+
+```bash
+npm run android:build:debug
+```
+
+安装到已连接的设备：
+
+```bash
+adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+Android 本地提醒、前台 WebSocket 实时陪伴、后台漏信同步与正式签名流程见 [Android 客户端说明](apps/companion-android/README.md)。公网 `https://app.havilume.me/` 仅提供 App 下载提示，`/api/*`、`/api/realtime/outbox` 和 `/downloads/*` 保持服务。
+
+本地开发或浏览器自动化仍可启动共享 UI：
 
 ```bash
 luminous-api --host 127.0.0.1 --port 8000
 ```
 
-然后打开：
+然后仅在本机打开：
 
 ```text
 http://127.0.0.1:8000
@@ -58,7 +73,7 @@ http://127.0.0.1:8000
 http://127.0.0.1:8000/?mode=fixture
 ```
 
-网页端提供 Manifest、可安装 PWA、静态离线壳和空间级深链。离线只保证温室轮廓与未发送 session draft；业务 API、聊天、写操作和历史不会缓存，也不会排队伪发送。
+本地网页模式不是产品发布渠道，仅用于确定性 fixture、接口联调和 Chromium 验收。
 
 本地不调用 LLM 的 smoke test：
 
@@ -84,7 +99,7 @@ luminous-api --host 127.0.0.1 --port 8000 --mock
 - `POST /api/outbox/receipt`
 - `GET /api/export`
 
-`POST /api/chat` 当前仍可能返回 `role_thinking`、`role_action`、memory、prompt、ledger/meta 等普通产品界面不应消费的内部字段。网页端通过严格 adapter 白名单只保留最终回复与有限 scene presentation；raw response 不进入 AppState、DOM、storage 或日志。公开部署前仍建议由后端提供真正的 user-safe DTO，并补齐身份认证与多用户隔离。
+公开 API 通过 user-safe DTO 输出；内部思考、prompt、ledger、trace、原始消息和 job 数据不会进入普通产品响应。公网部署使用显式 Origin、Bearer/会话认证和服务端会话绑定的通知设备。
 
 ## 后台 worker
 
@@ -104,7 +119,13 @@ luminous-worker --job memory_consolidation
 
 - `state_decay_tick`
 - `proactive_tick`
+- `reminder_due_tick`
+- `routine_due_tick`
+- `activity_expiry_tick`
+- `life_flow_effect_delivery`
+- `life_flow_audit_delivery`
 - `outbox_delivery`
+- `runtime_maintenance`
 - `memory_consolidation`
 - `memory_reindex`
 

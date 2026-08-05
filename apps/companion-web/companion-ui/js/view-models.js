@@ -6,6 +6,7 @@
  * @typedef {object} SceneViewModel
  * @property {string} caption
  * @property {VisualTone} tone
+ * @property {{heartLabel:string, heartDetail:string, activityLabel:string, activityDetail:string, moodLabel:string, moodDetail:string}} status
  */
 
 /**

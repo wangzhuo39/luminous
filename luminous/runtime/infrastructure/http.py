@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import hmac
 import json
 import logging
@@ -16,9 +17,34 @@ from luminous.runtime.application.service import CompanionService
 from luminous.runtime.domain.time import parse_iso_datetime
 from luminous.runtime.infrastructure.client import ModelClientError
 from luminous.runtime.infrastructure.auth import LoginRateLimited, SessionAuth
+from luminous.runtime.infrastructure.realtime import serve_outbox_websocket, websocket_upgrade_requested
 
 
 LOGGER = logging.getLogger(__name__)
+
+APP_LANDING_HTML = """<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Havilume Android App</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #090b12; color: #eef1ff; }
+    body { min-height: 100vh; margin: 0; display: grid; place-items: center; }
+    main { width: min(34rem, calc(100% - 3rem)); padding: 2.5rem; border: 1px solid #29304a; border-radius: 1.5rem; background: #111522; }
+    h1 { margin: 0 0 1rem; font-size: 1.65rem; }
+    p { color: #b7bfd9; line-height: 1.7; }
+    a { display: inline-block; margin-top: 1rem; padding: .8rem 1.15rem; border-radius: 999px; background: #dbe2ff; color: #101526; font-weight: 700; text-decoration: none; }
+  </style>
+</head>
+<body><main>
+  <h1>Havilume 已迁移至 Android App</h1>
+  <p>浏览器客户端已经停止使用。请安装 Android 内测版继续体验；聊天、状态、提醒与主动联系均在 App 内运行。</p>
+  <a href="/downloads/luminous-android-debug.apk?v=20260805-realtime" download>下载 Android 内测版</a>
+</main></body>
+</html>
+""".encode("utf-8")
 INTERNAL_HTTP_ENDPOINTS = {
     "/api/ledger",
     "/api/trace",
@@ -45,6 +71,15 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
             return
         self._send_empty(HTTPStatus.NO_CONTENT)
 
+    def do_HEAD(self) -> None:
+        path = urlparse(self.path).path
+        if not self._authorize(path):
+            return
+        if path.startswith("/downloads/"):
+            self._serve_static(path, head_only=True)
+            return
+        self._send_error(HTTPStatus.METHOD_NOT_ALLOWED, "method_not_allowed", "HEAD is not supported for this resource")
+
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         path = parsed.path
@@ -66,6 +101,17 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/health/deep":
                 self._send_json(HTTPStatus.OK, self._deep_health())
+                return
+            if path == "/api/realtime/outbox":
+                if not websocket_upgrade_requested(self.headers):
+                    self._send_error(HTTPStatus.UPGRADE_REQUIRED, "websocket_upgrade_required", "websocket upgrade is required")
+                    return
+                params = self._query_params(parsed.query)
+                try:
+                    since_ms = max(0, int(params.get("since", ["0"])[0] or "0"))
+                except ValueError as exc:
+                    raise ValueError("since must be an epoch millisecond value") from exc
+                serve_outbox_websocket(self, self.service, since_ms=since_ms)
                 return
             if path in INTERNAL_HTTP_ENDPOINTS:
                 self._send_error(HTTPStatus.NOT_FOUND, "not_found", "not found")
@@ -119,6 +165,9 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/settings/notifications":
                 self._send_json(HTTPStatus.OK, self.service.notification_preferences())
+                return
+            if path == "/api/settings/companion":
+                self._send_json(HTTPStatus.OK, self.service.companion_settings())
                 return
             if path == "/api/today":
                 params = self._query_params(parsed.query)
@@ -328,6 +377,18 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
                 except ValueError as exc:
                     self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
                 return
+            if path == "/api/notification-devices":
+                try:
+                    self._send_json(
+                        HTTPStatus.CREATED,
+                        self.service.register_notification_device(
+                            self._read_json_body(max_bytes=8 * 1024),
+                            session_digest=self.auth.session_digest(self.headers.get("Cookie", "")),
+                        ),
+                    )
+                except ValueError as exc:
+                    self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+                return
             if path.startswith("/api/reminders/"):
                 reminder_id, action = self._resource_action(path, "/api/reminders/")
                 try:
@@ -526,6 +587,8 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
                 result = self.service.update_calendar_event(event_id, payload)
             elif path == "/api/settings/notifications":
                 result = self.service.update_notification_preferences(payload)
+            elif path == "/api/settings/companion":
+                result = self.service.update_companion_settings(payload)
             else:
                 self._send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
                 return
@@ -539,6 +602,22 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
         if not self._authorize(path):
             return
         if not self._begin_idempotency("DELETE", path):
+            return
+        if path.startswith("/api/notification-devices/"):
+            device_id, action = self._resource_action(path, "/api/notification-devices/")
+            if action:
+                self._send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
+                return
+            try:
+                self._send_json(
+                    HTTPStatus.OK,
+                    self.service.unregister_notification_device(
+                        device_id,
+                        session_digest=self.auth.session_digest(self.headers.get("Cookie", "")),
+                    ),
+                )
+            except ValueError as exc:
+                self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
             return
         if path.startswith("/api/activities/"):
             self._send_error(HTTPStatus.NOT_FOUND, "not_found", "activity deletion is not supported")
@@ -660,7 +739,14 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
         if len(key) > 128:
             self._send_error(HTTPStatus.BAD_REQUEST, "invalid_request", "Idempotency-Key is too long")
             return False
-        record = self.service.runtime.store.reserve_api_idempotency(key, method, path)
+        try:
+            request_fingerprint = self._request_fingerprint(method, path)
+        except ValueError as exc:
+            self._send_error(HTTPStatus.BAD_REQUEST, "invalid_request", str(exc))
+            return False
+        record = self.service.runtime.store.reserve_api_idempotency(
+            key, method, path, request_fingerprint=request_fingerprint,
+        )
         state = record.get("state")
         if state == "completed":
             try:
@@ -677,7 +763,28 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
             self._send_error(HTTPStatus.CONFLICT, "request_in_flight", "the same request is already running", retryable=True)
             return False
         self._active_idempotency_key = key
+        self._active_idempotency_token = str(record.get("reservation_token", ""))
         return True
+
+    def _request_fingerprint(self, method: str, path: str) -> str:
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError as exc:
+            raise ValueError("invalid Content-Length") from exc
+        if length < 0:
+            raise ValueError("invalid Content-Length")
+        if length > 512 * 1024:
+            raise ValueError("request body is too large")
+        raw = self.rfile.read(length) if length else b""
+        if length:
+            self._buffered_request_body = raw
+        digest = hashlib.sha256()
+        digest.update(method.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(raw)
+        return digest.hexdigest()
 
     def _send_error(
         self,
@@ -703,7 +810,14 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
             raise ValueError("request body is required")
         if length > max_bytes:
             raise ValueError("request body is too large")
-        raw = self.rfile.read(length)
+        buffered = getattr(self, "_buffered_request_body", None)
+        if buffered is not None:
+            raw = bytes(buffered)
+            self._buffered_request_body = None
+            if len(raw) != length:
+                raise ValueError("request body length does not match Content-Length")
+        else:
+            raw = self.rfile.read(length)
         try:
             payload = json.loads(raw.decode("utf-8"))
         except json.JSONDecodeError as exc:
@@ -712,7 +826,18 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
             raise ValueError("request body must be a JSON object")
         return payload
 
-    def _serve_static(self, request_path: str) -> None:
+    def _serve_static(self, request_path: str, *, head_only: bool = False) -> None:
+        if self.config.public_deployment:
+            if request_path in {"/", "/index.html"}:
+                self._serve_app_landing()
+                return
+            if not request_path.startswith("/downloads/"):
+                self._send_error(
+                    HTTPStatus.GONE,
+                    "web_client_retired",
+                    "浏览器客户端已停止使用，请安装 Android App。",
+                )
+                return
         static_root = self.config.frontend_dir.resolve()
         relative = unquote(request_path.lstrip("/")) or "index.html"
         candidate = (static_root / relative).resolve()
@@ -731,13 +856,70 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
             if candidate.suffix == ".webmanifest"
             else mimetypes.guess_type(candidate.name)[0] or "application/octet-stream"
         )
-        data = candidate.read_bytes()
-        self.send_response(HTTPStatus.OK)
+        file_size = candidate.stat().st_size
+        start = 0
+        end = max(0, file_size - 1)
+        status = HTTPStatus.OK
+        range_header = self.headers.get("Range", "").strip()
+        if range_header:
+            try:
+                if not range_header.startswith("bytes=") or "," in range_header:
+                    raise ValueError
+                range_spec = range_header[6:]
+                first, last = range_spec.split("-", 1)
+                if not first:
+                    suffix_length = int(last)
+                    if suffix_length <= 0:
+                        raise ValueError
+                    start = max(0, file_size - suffix_length)
+                else:
+                    start = int(first)
+                    end = int(last) if last else file_size - 1
+                if start < 0 or start >= file_size or end < start:
+                    raise ValueError
+                end = min(end, file_size - 1)
+                status = HTTPStatus.PARTIAL_CONTENT
+            except (TypeError, ValueError):
+                self.send_response(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
+                self._send_common_headers(cache_control="no-cache")
+                self.send_header("Content-Range", f"bytes */{file_size}")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+        content_length = max(0, end - start + 1) if file_size else 0
+        self.send_response(status)
         self._send_common_headers(cache_control="no-cache")
         self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Length", str(content_length))
+        if status == HTTPStatus.PARTIAL_CONTENT:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
         self.end_headers()
-        self.wfile.write(data)
+        if head_only or content_length == 0:
+            return
+        try:
+            with candidate.open("rb") as stream:
+                stream.seek(start)
+                remaining = content_length
+                while remaining:
+                    chunk = stream.read(min(64 * 1024, remaining))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    remaining -= len(chunk)
+        except (BrokenPipeError, ConnectionResetError):
+            return
+
+    def _serve_app_landing(self) -> None:
+        self.send_response(HTTPStatus.OK)
+        self._send_common_headers(cache_control="no-store")
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'")
+        self.send_header("Clear-Site-Data", '"cache", "storage"')
+        self.send_header("X-Robots-Tag", "noindex, nofollow")
+        self.send_header("Content-Length", str(len(APP_LANDING_HTML)))
+        self.end_headers()
+        self.wfile.write(APP_LANDING_HTML)
 
     def _send_json(
         self,
@@ -764,6 +946,27 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
             }
             status = normalized_status
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        key = getattr(self, "_active_idempotency_key", "")
+        if key:
+            reservation_token = getattr(self, "_active_idempotency_token", "")
+            completed = self.service.runtime.store.complete_api_idempotency(
+                key,
+                int(status),
+                data.decode("utf-8"),
+                reservation_token=reservation_token,
+            )
+            self._active_idempotency_key = ""
+            self._active_idempotency_token = ""
+            if not completed:
+                status = HTTPStatus.CONFLICT
+                payload = {
+                    "error": {
+                        "code": "idempotency_lease_lost",
+                        "message": "request ownership expired before completion",
+                        "retryable": True,
+                    }
+                }
+                data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self._send_common_headers()
         if status == HTTPStatus.UNAUTHORIZED:
@@ -774,10 +977,6 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
-        key = getattr(self, "_active_idempotency_key", "")
-        if key:
-            self.service.runtime.store.complete_api_idempotency(key, int(status), data.decode("utf-8"))
-            self._active_idempotency_key = ""
 
     def _send_empty(self, status: HTTPStatus) -> None:
         self.send_response(status)

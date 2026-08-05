@@ -93,7 +93,8 @@ export function initPwaExperience(dom, {
     notify();
   });
 
-  const ready = navigatorRef.serviceWorker?.register
+  const nativeRuntime = windowRef.__LUMINOUS_NATIVE__ === true;
+  const ready = !nativeRuntime && navigatorRef.serviceWorker?.register
     ? navigatorRef.serviceWorker.register('./service-worker.js', { scope: './' })
       .then((value) => { observeRegistration(value); return value; })
       .catch(() => null)

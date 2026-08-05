@@ -152,3 +152,31 @@ export function renderPrivacy(dom, state) {
     ? `当前免打扰至 ${timeLabel(state.value.dndUntil)}。这项状态由陪伴服务维护。`
     : '当前没有额外的免打扰时段。';
 }
+
+export function renderCompanionSettings(dom, state) {
+  const form = dom.companionForm;
+  const status = dom.companionStatus;
+  if (!form || !status) return;
+  const companion = state.companion;
+  const ready = state.loaded && companion.status !== 'idle';
+  form.hidden = !ready;
+  setState(status, !state.loaded && state.status === 'loading' ? '正在读取连接与伴侣设定…'
+    : companion.status === 'saving' ? '正在保存新的连接与设定…'
+      : companion.status === 'saved' ? '连接与伴侣设定已保存，将从下一轮对话开始生效。'
+        : companion.status === 'load-error' ? '暂时无法读取服务端已有设定；你仍可填写，保存时会再次连接。'
+        : companion.status === 'error' ? '设置没有保存，请检查地址、模型和生成参数。'
+          : '', companion.status === 'error' || companion.status === 'load-error' ? 'error' : '');
+  if (!ready) return;
+  const draft = companion.draft;
+  dom.companionBaseUrl.value = draft.baseUrl;
+  dom.companionModel.value = draft.model;
+  dom.companionTemperature.value = String(draft.temperature);
+  dom.companionMaxTokens.value = String(draft.maxTokens);
+  dom.companionInstructions.value = draft.instructions;
+  if (dom.companionApiKey.value !== draft.apiKey) dom.companionApiKey.value = draft.apiKey;
+  dom.companionApiKey.placeholder = companion.value.apiKeyConfigured ? '已保存；留空表示不修改' : '输入 API key';
+  dom.companionKeyState.textContent = companion.value.apiKeyConfigured ? '密钥已保存在服务端，页面不会回显。' : '尚未保存 API key。';
+  dom.companionConnectionState.textContent = companion.value.configured ? '当前 LLM 连接信息完整。' : '请填写地址、API key 与模型。';
+  dom.companionSave.disabled = !companion.dirty || companion.status === 'saving';
+  dom.companionSave.textContent = companion.status === 'saving' ? '正在保存…' : companion.dirty ? '保存连接与设定' : '已是当前设定';
+}

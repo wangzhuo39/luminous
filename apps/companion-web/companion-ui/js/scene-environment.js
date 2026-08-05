@@ -36,6 +36,28 @@ export function deriveSolarState(value = new Date()) {
   return Object.freeze({ phase, solarPhase, lightAngle });
 }
 
+export function scenePeriodLabel(value = new Date()) {
+  const hour = value instanceof Date && Number.isFinite(value.getTime()) ? value.getHours() : -1;
+  if (hour >= 5 && hour < 9) return '清晨';
+  if (hour >= 9 && hour < 12) return '上午';
+  if (hour >= 12 && hour < 17) return '午后';
+  if (hour >= 17 && hour < 20) return '傍晚';
+  return hour >= 0 ? '夜晚' : '此刻';
+}
+
+export function renderSceneClock(scene, value = new Date()) {
+  if (!scene?.querySelector || !(value instanceof Date) || !Number.isFinite(value.getTime())) return '';
+  const text = `${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`;
+  const clock = scene.querySelector('[data-hook="scene-clock"]');
+  const period = scene.querySelector('[data-hook="scene-period"]');
+  if (clock) {
+    clock.textContent = text;
+    clock.setAttribute('datetime', value.toISOString());
+  }
+  if (period) period.textContent = scenePeriodLabel(value);
+  return text;
+}
+
 export function crystalCountForMemoryCount(value) {
   const count = safeCount(value);
   if (count === 0) return 0;
@@ -118,8 +140,10 @@ export function initSceneEnvironment({
 
   const update = (input = lastInput) => {
     lastInput = { ...input };
-    const environment = deriveEnvironment(lastInput, now());
+    const currentTime = now();
+    const environment = deriveEnvironment(lastInput, currentTime);
     applyEnvironment(scene, environment);
+    renderSceneClock(scene, currentTime);
     if (environment.crystalCount !== lastCrystalCount) {
       renderMemoryCrystals(crystalField, environment.crystalCount);
       lastCrystalCount = environment.crystalCount;
@@ -127,7 +151,8 @@ export function initSceneEnvironment({
     return environment;
   };
 
-  const timerId = setTimer(() => update(), 60_000);
+  update();
+  const timerId = setTimer(() => update(), 30_000);
   return {
     update,
     destroy() {

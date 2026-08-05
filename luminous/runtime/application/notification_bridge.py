@@ -4,6 +4,7 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -63,8 +64,9 @@ class NotificationBridge:
     receipt that can be stored without leaking provider secrets.
     """
 
-    def __init__(self, config: BackendConfig) -> None:
+    def __init__(self, config: BackendConfig, store: Any | None = None) -> None:
         self.config = config
+        self.store = store
 
     def deliver(
         self,
@@ -74,6 +76,7 @@ class NotificationBridge:
         trace_id: str,
         now: datetime | None = None,
         title: str = "叶筝",
+        delivery_context: dict[str, Any] | None = None,
     ) -> NotificationDelivery:
         now = now or datetime.now(timezone.utc)
         occurred_at = utc_now_iso(now)
@@ -82,6 +85,17 @@ class NotificationBridge:
             return _skipped(channel="internal", detail="notification_disabled", occurred_at=occurred_at)
         if channel == "internal":
             return _skipped(channel="internal", detail="no_external_channel_configured", occurred_at=occurred_at)
+        delivery_context = dict(delivery_context or {})
+        if channel == "fcm" and not self._fcm_devices():
+            delivered_ids = list(delivery_context.get("delivered_device_ids", []) or [])
+            if delivered_ids:
+                return NotificationDelivery(
+                    channel="fcm", provider="fcm", status="delivered", attempted=True, ok=True,
+                    receipt_type="notification_delivered", detail="previous_device_delivery_completed",
+                    status_code=200, occurred_at=occurred_at,
+                    metadata={"delivered_device_ids": delivered_ids, "delivered_devices": 0, "failed_devices": 0},
+                )
+            return _skipped(channel="fcm", detail="no_registered_android_device", occurred_at=occurred_at)
 
         payload = {
             "title": title,
@@ -91,8 +105,19 @@ class NotificationBridge:
             "source": "role-play",
             "signal": signal.to_dict(),
         }
+        metadata: dict[str, Any] = {}
         try:
-            if channel == "telegram":
+            if channel == "fcm":
+                status_code, body, metadata = self._deliver_fcm(
+                    title,
+                    message,
+                    payload,
+                    delivered_device_ids=set(
+                        str(value) for value in delivery_context.get("delivered_device_ids", []) or []
+                    ),
+                )
+                provider = "fcm"
+            elif channel == "telegram":
                 status_code, body = self._deliver_telegram(title, message)
                 provider = "telegram"
             elif channel == "bark":
@@ -125,6 +150,7 @@ class NotificationBridge:
                 detail=_clip(body, 240),
                 occurred_at=occurred_at,
                 status_code=int(status_code),
+                metadata=metadata,
             )
         return NotificationDelivery(
             channel=channel,
@@ -136,12 +162,15 @@ class NotificationBridge:
             detail=_clip(body, 240),
             status_code=int(status_code),
             occurred_at=occurred_at,
+            metadata=metadata,
         )
 
     def _select_channel(self) -> str:
         explicit = self.config.notify_channel.strip().lower()
-        if explicit in {"webhook", "telegram", "bark"}:
+        if explicit in {"webhook", "telegram", "bark", "fcm"}:
             return explicit
+        if self.config.notify_fcm_project_id and self.config.notify_fcm_service_account_file:
+            return "fcm"
         if self.config.notify_webhook_url:
             return "webhook"
         if self.config.notify_telegram_bot_token and self.config.notify_telegram_chat_id:
@@ -149,6 +178,125 @@ class NotificationBridge:
         if self.config.notify_bark_url:
             return "bark"
         return "internal"
+
+    def _fcm_devices(self) -> list[dict[str, Any]]:
+        if self.store is None:
+            return []
+        return list(self.store.read_notification_devices(
+            status="active",
+            session_idle_seconds=self.config.session_idle_seconds,
+        ))
+
+    def _deliver_fcm(
+        self,
+        title: str,
+        message: str,
+        payload: dict[str, Any],
+        *,
+        delivered_device_ids: set[str] | None = None,
+    ) -> tuple[int, str, dict[str, Any]]:
+        service_account_file = Path(self.config.notify_fcm_service_account_file).expanduser()
+        if not service_account_file.is_file():
+            raise ValueError("FCM service account file is not available")
+        try:
+            from google.auth.transport.requests import Request
+            from google.oauth2 import service_account
+        except ImportError as exc:
+            raise RuntimeError("google-auth is required for FCM delivery") from exc
+        credentials = service_account.Credentials.from_service_account_file(
+            str(service_account_file),
+            scopes=["https://www.googleapis.com/auth/firebase.messaging"],
+        )
+        credentials.refresh(Request())
+        url = (
+            "https://fcm.googleapis.com/v1/projects/"
+            f"{urllib.parse.quote(self.config.notify_fcm_project_id, safe='')}/messages:send"
+        )
+        delivered_device_ids = set(delivered_device_ids or set())
+        delivered = 0
+        retryable_failed = 0
+        removed = 0
+        last_status = 503
+        details: list[str] = []
+        pending_devices = [
+            device for device in self._fcm_devices()
+            if str(device.get("device_id", "")) not in delivered_device_ids
+        ]
+        if not pending_devices:
+            return 200, "all_target_devices_already_delivered", {
+                "delivered_devices": 0,
+                "failed_devices": 0,
+                "delivered_device_ids": sorted(delivered_device_ids),
+                "retryable_failed_devices": 0,
+                "removed_devices": 0,
+            }
+        for device in pending_devices:
+            token = str(device.get("token", ""))
+            device_id = str(device.get("device_id", ""))
+            body = {
+                "message": {
+                    "token": token,
+                    "notification": {"title": title, "body": message},
+                    "data": {
+                        "space": "outbox",
+                        "trace_id": str(payload.get("trace_id", "")),
+                        "signal_type": str(dict(payload.get("signal", {}) or {}).get("signal_type", "notification")),
+                    },
+                    "android": {
+                        "priority": "high",
+                        "notification": {"channel_id": "luminous_messages"},
+                    },
+                }
+            }
+            request = urllib.request.Request(
+                url,
+                data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+                headers={
+                    "Authorization": f"Bearer {credentials.token}",
+                    "Content-Type": "application/json; charset=utf-8",
+                },
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=self.config.notify_timeout_seconds) as response:
+                    response_body = response.read(2048).decode("utf-8", errors="replace")
+                    last_status = int(response.status)
+                    if 200 <= last_status < 300:
+                        delivered += 1
+                        delivered_device_ids.add(device_id)
+                    else:
+                        retryable_failed += 1
+                    details.append(_clip(response_body, 120))
+            except urllib.error.HTTPError as exc:
+                last_status = int(exc.code)
+                error_body = _safe_read_error(exc)
+                details.append(_clip(error_body, 120))
+                if "UNREGISTERED" in error_body or last_status == 404:
+                    self.store.disable_notification_device(token, reason="fcm_unregistered")
+                    removed += 1
+                else:
+                    retryable_failed += 1
+            except Exception as exc:  # noqa: BLE001 - isolate one device from the remaining fanout.
+                last_status = 503
+                retryable_failed += 1
+                details.append(_clip(type(exc).__name__ + ": " + str(exc), 120))
+        permanent_failure = not delivered_device_ids and removed > 0 and retryable_failed == 0
+        if retryable_failed:
+            status_code = last_status if last_status >= 400 else 503
+        elif delivered_device_ids:
+            status_code = 200
+        elif permanent_failure:
+            status_code = 410
+        else:
+            status_code = 503
+        return status_code, "; ".join(details[-3:]), {
+            "delivered_devices": delivered,
+            "failed_devices": retryable_failed + removed,
+            "delivered_device_ids": sorted(delivered_device_ids),
+            "retryable_failed_devices": retryable_failed,
+            "removed_devices": removed,
+            "permanent_failure": permanent_failure,
+        }
 
     def _deliver_webhook(self, payload: dict[str, Any]) -> tuple[int, str]:
         if not self.config.notify_webhook_url:
@@ -224,6 +372,7 @@ def _failed(
     detail: str,
     occurred_at: str,
     status_code: int = 0,
+    metadata: dict[str, Any] | None = None,
 ) -> NotificationDelivery:
     return NotificationDelivery(
         channel=channel,
@@ -235,6 +384,7 @@ def _failed(
         detail=detail,
         status_code=status_code,
         occurred_at=occurred_at,
+        metadata=dict(metadata or {}),
     )
 
 

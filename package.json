@@ -5,9 +5,23 @@
     "test": "npm run test:frontend",
     "test:frontend": "node --test tests/frontend/*.test.mjs",
     "test:real": "node tests/frontend/i1-real-mode-browser-acceptance.mjs",
-    "test:browser": "node tests/frontend/crystal-solarium-browser-acceptance.mjs && node tests/frontend/s3-browser-acceptance.mjs && node tests/frontend/s3-b4-browser-acceptance.mjs && node tests/frontend/s3-b5-browser-acceptance.mjs && node tests/frontend/s3-b6-browser-acceptance.mjs && node tests/frontend/s3-b7-browser-acceptance.mjs && node tests/frontend/s3-b8-browser-acceptance.mjs && node tests/frontend/s4-silent-spaces-browser-acceptance.mjs && node tests/frontend/s5-productization-browser-acceptance.mjs"
+    "test:browser": "node scripts/run-browser-acceptance.mjs",
+    "build:android:web": "node scripts/build-android-web.mjs",
+    "android:add": "npm run build:android:web && cap add android",
+    "android:sync": "npm run build:android:web && cap sync android",
+    "android:open": "cap open android",
+    "android:build:debug": "node scripts/build-android-debug.mjs",
+    "android:build:release": "node scripts/build-android-release.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.0"
+    "@capacitor/cli": "^8.5.0",
+    "@playwright/test": "^1.62.0",
+    "esbuild": "^0.25.12"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/local-notifications": "^8.2.1"
   }
 }

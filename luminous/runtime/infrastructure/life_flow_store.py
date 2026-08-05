@@ -5,6 +5,7 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import local
 from typing import Any, Iterator
 
 from luminous.runtime.domain.activity import ActivitySession, DiaryEntry, Routine, RoutineCheckin, Task, TaskStep
@@ -15,32 +16,47 @@ class LifeFlowStore:
     """Dedicated persistence for life-flow records.
 
     It intentionally shares the runtime output directory, while keeping activity
-    data out of the already broad companion runtime store.  Domain writes are
-    transactional within this database; cross-cutting audit events are written
-    by ``LifeFlowService`` after a successful domain transition.
+    data out of the already broad companion runtime store. Domain writes and
+    their durable audit intents are committed in one transaction; a worker
+    later projects those intents into the companion runtime store.
     """
 
     def __init__(self, base_dir: Path) -> None:
         self.base_dir = base_dir
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self.db_path = self.base_dir / "life_flow.sqlite3"
+        self._transaction_state = local()
         self._ensure_schema()
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
+        active = getattr(self._transaction_state, "connection", None)
+        if active is not None:
+            yield active
+            return
+
         connection = sqlite3.connect(self.db_path)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA journal_mode = WAL")
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA busy_timeout = 5000")
         try:
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA journal_mode = WAL")
+            connection.execute("PRAGMA foreign_keys = ON")
+            connection.execute("PRAGMA busy_timeout = 5000")
+            self._transaction_state.connection = connection
             yield connection
             connection.commit()
-        except Exception:
+        except BaseException:
             connection.rollback()
             raise
         finally:
+            self._transaction_state.connection = None
             connection.close()
+
+    @contextmanager
+    def atomic(self) -> Iterator[None]:
+        """Commit nested life-flow reads and writes as one transaction."""
+
+        with self._connect():
+            yield
 
     def _ensure_schema(self) -> None:
         with self._connect() as conn:
@@ -131,8 +147,222 @@ class LifeFlowStore:
                     updated_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS diary_entries_scope_date_idx ON diary_entries(user_scope, date, status, entry_id);
+
+                CREATE TABLE IF NOT EXISTS life_flow_audit_outbox (
+                    event_id TEXT PRIMARY KEY,
+                    payload_json TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'queued',
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    last_error TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    delivered_at TEXT NOT NULL DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS life_flow_audit_outbox_status_created_idx
+                    ON life_flow_audit_outbox(status, created_at, event_id);
+
+                CREATE TABLE IF NOT EXISTS life_flow_effect_outbox (
+                    effect_id TEXT PRIMARY KEY,
+                    effect_type TEXT NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'queued',
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    last_error TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    delivered_at TEXT NOT NULL DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS life_flow_effect_outbox_status_created_idx
+                    ON life_flow_effect_outbox(status, created_at, effect_id);
                 """
             )
+
+    def enqueue_audit_event(self, event: dict[str, Any]) -> str:
+        event_id = str(event.get("event_id", "")).strip()
+        if not event_id:
+            raise ValueError("audit event_id is required")
+        timestamp = str(event.get("created_at", "")) or utc_now_iso()
+        payload_json = json.dumps(event, ensure_ascii=False, separators=(",", ":"))
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO life_flow_audit_outbox (
+                    event_id, payload_json, status, attempts, last_error,
+                    created_at, updated_at, delivered_at
+                ) VALUES (?, ?, 'queued', 0, '', ?, ?, '')
+                """,
+                (event_id, payload_json, timestamp, timestamp),
+            )
+        return event_id
+
+    def read_pending_audit_events(self, *, limit: int = 50) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT event_id, payload_json, status, attempts, last_error,
+                       created_at, updated_at, delivered_at
+                FROM life_flow_audit_outbox
+                WHERE status IN ('queued', 'retrying')
+                ORDER BY created_at, event_id
+                LIMIT ?
+                """,
+                (max(1, min(limit, 500)),),
+            ).fetchall()
+        return [
+            {
+                "event_id": str(row["event_id"]),
+                "event": json.loads(str(row["payload_json"])),
+                "status": str(row["status"]),
+                "attempts": int(row["attempts"]),
+                "last_error": str(row["last_error"]),
+                "created_at": str(row["created_at"]),
+                "updated_at": str(row["updated_at"]),
+                "delivered_at": str(row["delivered_at"]),
+            }
+            for row in rows
+        ]
+
+    def mark_audit_delivered(self, event_id: str, *, now: datetime | None = None) -> bool:
+        timestamp = utc_now_iso(now)
+        with self._connect() as conn:
+            changed = conn.execute(
+                """
+                UPDATE life_flow_audit_outbox
+                SET status = 'delivered', attempts = attempts + 1,
+                    last_error = '', updated_at = ?, delivered_at = ?
+                WHERE event_id = ? AND status IN ('queued', 'retrying')
+                """,
+                (timestamp, timestamp, event_id),
+            ).rowcount
+        return bool(changed)
+
+    def mark_audit_failed(
+        self,
+        event_id: str,
+        error_code: str,
+        *,
+        now: datetime | None = None,
+    ) -> bool:
+        timestamp = utc_now_iso(now)
+        with self._connect() as conn:
+            changed = conn.execute(
+                """
+                UPDATE life_flow_audit_outbox
+                SET status = 'retrying', attempts = attempts + 1,
+                    last_error = ?, updated_at = ?
+                WHERE event_id = ? AND status IN ('queued', 'retrying')
+                """,
+                (error_code[:120], timestamp, event_id),
+            ).rowcount
+        return bool(changed)
+
+    def enqueue_effect(
+        self,
+        effect_id: str,
+        effect_type: str,
+        payload: dict[str, Any],
+        *,
+        now: datetime | None = None,
+    ) -> str:
+        clean_id = effect_id.strip()
+        clean_type = effect_type.strip()
+        if not clean_id or not clean_type:
+            raise ValueError("effect_id and effect_type are required")
+        timestamp = utc_now_iso(now)
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO life_flow_effect_outbox (
+                    effect_id, effect_type, payload_json, status, attempts,
+                    last_error, created_at, updated_at, delivered_at
+                ) VALUES (?, ?, ?, 'queued', 0, '', ?, ?, '')
+                """,
+                (
+                    clean_id,
+                    clean_type,
+                    json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+                    timestamp,
+                    timestamp,
+                ),
+            )
+        return clean_id
+
+    def read_pending_effects(self, *, limit: int = 50) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT effect_id, effect_type, payload_json, status, attempts,
+                       last_error, created_at, updated_at, delivered_at
+                FROM life_flow_effect_outbox
+                WHERE status IN ('queued', 'retrying')
+                ORDER BY created_at, effect_id
+                LIMIT ?
+                """,
+                (max(1, min(limit, 500)),),
+            ).fetchall()
+        return [
+            {
+                "effect_id": str(row["effect_id"]),
+                "effect_type": str(row["effect_type"]),
+                "payload": json.loads(str(row["payload_json"])),
+                "status": str(row["status"]),
+                "attempts": int(row["attempts"]),
+                "last_error": str(row["last_error"]),
+                "created_at": str(row["created_at"]),
+                "updated_at": str(row["updated_at"]),
+                "delivered_at": str(row["delivered_at"]),
+            }
+            for row in rows
+        ]
+
+    def mark_effect_delivered(self, effect_id: str, *, now: datetime | None = None) -> bool:
+        timestamp = utc_now_iso(now)
+        with self._connect() as conn:
+            changed = conn.execute(
+                """
+                UPDATE life_flow_effect_outbox
+                SET status = 'delivered', attempts = attempts + 1,
+                    last_error = '', updated_at = ?, delivered_at = ?
+                WHERE effect_id = ? AND status IN ('queued', 'retrying')
+                """,
+                (timestamp, timestamp, effect_id),
+            ).rowcount
+        return bool(changed)
+
+    def mark_effect_failed(
+        self,
+        effect_id: str,
+        error_code: str,
+        *,
+        now: datetime | None = None,
+    ) -> bool:
+        timestamp = utc_now_iso(now)
+        with self._connect() as conn:
+            changed = conn.execute(
+                """
+                UPDATE life_flow_effect_outbox
+                SET status = 'retrying', attempts = attempts + 1,
+                    last_error = ?, updated_at = ?
+                WHERE effect_id = ? AND status IN ('queued', 'retrying')
+                """,
+                (error_code[:120], timestamp, effect_id),
+            ).rowcount
+        return bool(changed)
+
+    def prune_delivered_outboxes(self, *, before: datetime) -> dict[str, int]:
+        """Remove projected intents after their authoritative records exist."""
+
+        cutoff = utc_now_iso(before)
+        with self._connect() as conn:
+            audit_count = conn.execute(
+                "DELETE FROM life_flow_audit_outbox WHERE status = 'delivered' AND delivered_at < ?",
+                (cutoff,),
+            ).rowcount
+            effect_count = conn.execute(
+                "DELETE FROM life_flow_effect_outbox WHERE status = 'delivered' AND delivered_at < ?",
+                (cutoff,),
+            ).rowcount
+        return {"audit_outbox": int(audit_count), "effect_outbox": int(effect_count)}
 
     def save_task(self, task: Task) -> Task:
         payload = task.to_dict()

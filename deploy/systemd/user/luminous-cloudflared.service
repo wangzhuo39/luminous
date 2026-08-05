@@ -1,0 +1,20 @@
+[Unit]
+Description=Luminous Cloudflare Tunnel (user service)
+After=network-online.target luminous-api.service
+Wants=network-online.target
+Requires=luminous-api.service
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cloudflared tunnel run --protocol http2 --token-file /home/wz/.cloudflared/luminous.token
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target
