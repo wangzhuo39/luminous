@@ -30,6 +30,33 @@ class BackendConfigTest(unittest.TestCase):
             self.assertEqual(config.api_key, "chat-key")
             self.assertEqual(config.model, "chat-model")
 
+    def test_legacy_tts_profile_maps_to_explicit_voice_config(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            env_path = root / ".env"
+            env_path.write_text(
+                "\n".join(
+                    (
+                        "base_url=https://chat.example/v1",
+                        "key=chat-key",
+                        "model=chat-model",
+                        "base_url=https://speech.example",
+                        "key=voice-key",
+                        "model=tts-1",
+                    )
+                ),
+                encoding="utf-8",
+            )
+
+            config = load_backend_config(project_root=root, env_path=env_path, environ={})
+
+            self.assertEqual(config.base_url, "https://chat.example/v1")
+            self.assertEqual(config.tts_base_url, "https://speech.example/v1")
+            self.assertEqual(config.tts_api_key, "voice-key")
+            self.assertEqual(config.tts_model, "tts-1")
+            self.assertEqual(config.tts_voice, "alloy")
+            self.assertTrue(config.tts_configured)
+
     def test_public_cookie_auth_and_external_data_dir(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

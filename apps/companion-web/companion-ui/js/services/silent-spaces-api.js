@@ -7,6 +7,15 @@ const EMPTY_COMPANION_SETTINGS = Object.freeze({
     api_key_configured: false, configured: false,
   }),
   companion: Object.freeze({ instructions: '', customized: false }),
+  tts: Object.freeze({
+    provider: 'openai-compatible', base_url: '', model: '',
+    api_key_configured: false, configured: false,
+  }),
+  voice: Object.freeze({ voice_enabled: true, auto_play: false, voice_id: 'alloy', speaking_rate: 1, output_volume: 1 }),
+  providers: Object.freeze({
+    stt: Object.freeze({ provider: 'openai-compatible', configured: false }),
+    tts: Object.freeze({ provider: 'openai-compatible', configured: false }),
+  }),
   updated_at: '',
 });
 

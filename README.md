@@ -135,13 +135,14 @@ luminous-worker --job memory_consolidation
 
 1. [docs/product/luminous_identity.md](docs/product/luminous_identity.md)：理解“栖光 luminous”的产品身份。
 2. [docs/project_overview.md](docs/project_overview.md)：理解当前项目阶段和整体结构。
-3. [docs/research/ai_companion_progress_gap_audit.md](docs/research/ai_companion_progress_gap_audit.md)：查看当前完成度和缺口。
-4. [docs/research/ai_companion_landscape.md](docs/research/ai_companion_landscape.md)：查看开源 AI 伴侣功能调研。
-5. [docs/architecture/roleplay_companion_architecture.md](docs/architecture/roleplay_companion_architecture.md)：理解伴侣底座架构。
-6. [docs/architecture/companion_foundation_implementation_roadmap.md](docs/architecture/companion_foundation_implementation_roadmap.md)：查看五阶段实现路线。
-7. [docs/front_design/README.md](docs/front_design/README.md)：查看前端设计与 S1–S5 文档索引。
-8. [docs/front_design/FRONTEND_AGENT_HANDOFF.md](docs/front_design/FRONTEND_AGENT_HANDOFF.md)：查看当前前端完成状态、边界与后续接手规则。
-9. [docs/front_design/frontend_architecture_v1.md](docs/front_design/frontend_architecture_v1.md)：查看持续维护的前端架构决策。
+3. [docs/architecture/luminous_companion_runtime_architecture.md](docs/architecture/luminous_companion_runtime_architecture.md)：查看下一代 Companion Runtime 的规范性目标架构和模块边界。
+4. [docs/research/ai_companion_progress_gap_audit.md](docs/research/ai_companion_progress_gap_audit.md)：查看当前完成度和缺口。
+5. [docs/research/ai_companion_landscape.md](docs/research/ai_companion_landscape.md)：查看开源 AI 伴侣功能调研。
+6. [docs/architecture/roleplay_companion_architecture.md](docs/architecture/roleplay_companion_architecture.md)：理解伴侣底座的早期设计。
+7. [docs/architecture/companion_foundation_implementation_roadmap.md](docs/architecture/companion_foundation_implementation_roadmap.md)：查看阶段性实现路线。
+8. [docs/front_design/README.md](docs/front_design/README.md)：查看前端设计与 S1–S5 文档索引。
+9. [docs/front_design/FRONTEND_AGENT_HANDOFF.md](docs/front_design/FRONTEND_AGENT_HANDOFF.md)：查看当前前端完成状态、边界与后续接手规则。
+10. [docs/front_design/frontend_architecture_v1.md](docs/front_design/frontend_architecture_v1.md)：查看持续维护的前端架构决策。
 
 训练和数据准备文档仍然保留，但它们现在是“人格/模型底座”的资料，不再是产品主线入口：
 

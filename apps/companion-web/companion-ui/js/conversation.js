@@ -31,6 +31,8 @@ export function initConversation(dom, {
   onStateChange,
   onDraftInput = () => {},
   onDraftSent = () => {},
+  onReply = () => {},
+  onSendingChange = () => {},
 }) {
   let isComposing = false;
   let activeController = null;
@@ -40,9 +42,9 @@ export function initConversation(dom, {
     resizeInput(dom.chatInput);
   }
 
-  async function submit() {
+  async function submit(message = dom.chatInput?.value ?? '') {
     if (mode === 'fixture') {
-      if (submitLocalConversation(dom.chatInput?.value ?? '')) {
+      if (submitLocalConversation(message)) {
         onDraftSent();
         renderAndResize();
         clearSubmittedInput(dom.chatInput);
@@ -52,12 +54,13 @@ export function initConversation(dom, {
       return;
     }
 
-    const payload = beginChatSubmission();
+    const payload = beginChatSubmission(message);
     if (!payload) return;
 
     const controller = new AbortController();
     activeController = controller;
     renderAndResize();
+    onSendingChange(true);
     announce('我听见了，正在回应。');
 
     try {
@@ -72,6 +75,7 @@ export function initConversation(dom, {
         clearSubmittedInput(dom.chatInput);
         dom.dialogueStream?.lastElementChild?.scrollIntoView({ block: 'nearest' });
         announce(replyAnnouncement(result.assistantMessage.text));
+        onReply(result.assistantMessage);
         dom.chatInput?.focus({ preventScroll: true });
       }
     } catch (error) {
@@ -83,6 +87,7 @@ export function initConversation(dom, {
       }
     } finally {
       if (controller === activeController) activeController = null;
+      onSendingChange(false);
     }
   }
 
@@ -120,6 +125,9 @@ export function initConversation(dom, {
   resizeInput(dom.chatInput);
 
   return {
+    submitText(text) {
+      return submit(text);
+    },
     destroy() {
       activeController?.abort();
       activeController = null;

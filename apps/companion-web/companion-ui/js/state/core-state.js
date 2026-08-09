@@ -64,9 +64,10 @@ export function updateDraft(newDraft) {
   return true;
 }
 
-export function beginChatSubmission() {
+export function beginChatSubmission(messageOverride = '') {
   const draft = appStore.state.conversation.draft;
-  const message = draft.trim();
+  const message = typeof messageOverride === 'string' && messageOverride.trim()
+    ? messageOverride.trim() : draft.trim();
   const canSend = appStore.state.runtimeMode === 'fixture' || appStore.state.appStatus === 'ready';
   if (!message || !appStore.state.viewModels || !canSend || appStore.state.conversation.chatStatus === 'submitting') {
     return null;
@@ -126,6 +127,21 @@ export function completeChatSubmission(payload, result) {
   appStore.state.conversation.draft = '';
   appStore.state.conversation.pendingDraft = '';
   appStore.state.conversation.pendingSubmissionId = null;
+  appStore.state.conversation.chatStatus = 'idle';
+  appStore.state.conversation.chatError = null;
+  return true;
+}
+
+export function completeVoiceTurn(userText, replyText) {
+  const user = typeof userText === 'string' ? userText.trim() : '';
+  const reply = typeof replyText === 'string' ? replyText.trim() : '';
+  if (!user || !reply || !appStore.state.viewModels) return false;
+  appStore.messageCounter += 1;
+  appStore.state.viewModels.conversation.messages = [
+    ...(appStore.state.viewModels.conversation.messages ?? []),
+    { id: `voice-user-${appStore.messageCounter}`, role: 'user', text: user },
+    { id: `voice-assistant-${appStore.messageCounter}`, role: 'assistant', text: reply },
+  ].slice(-10);
   appStore.state.conversation.chatStatus = 'idle';
   appStore.state.conversation.chatError = null;
   return true;

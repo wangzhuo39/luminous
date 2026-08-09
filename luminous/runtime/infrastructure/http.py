@@ -14,10 +14,12 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from luminous.runtime.config import PROJECT_ROOT, BackendConfig, load_backend_config
 from luminous.runtime.application.service import CompanionService
+from luminous.runtime.domain.voice import VoiceProviderError
 from luminous.runtime.domain.time import parse_iso_datetime
 from luminous.runtime.infrastructure.client import ModelClientError
 from luminous.runtime.infrastructure.auth import LoginRateLimited, SessionAuth
 from luminous.runtime.infrastructure.realtime import serve_outbox_websocket, websocket_upgrade_requested
+from luminous.runtime.infrastructure.voice_realtime import serve_voice_realtime_websocket
 
 
 LOGGER = logging.getLogger(__name__)
@@ -112,6 +114,15 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
                 except ValueError as exc:
                     raise ValueError("since must be an epoch millisecond value") from exc
                 serve_outbox_websocket(self, self.service, since_ms=since_ms)
+                return
+            if path == "/api/voice/realtime":
+                if not websocket_upgrade_requested(self.headers):
+                    self._send_error(HTTPStatus.UPGRADE_REQUIRED, "websocket_upgrade_required", "websocket upgrade is required")
+                    return
+                try:
+                    serve_voice_realtime_websocket(self, self.service, self.config)
+                except ValueError as exc:
+                    self._send_error(HTTPStatus.SERVICE_UNAVAILABLE, "voice_realtime_unavailable", str(exc))
                 return
             if path in INTERNAL_HTTP_ENDPOINTS:
                 self._send_error(HTTPStatus.NOT_FOUND, "not_found", "not found")
@@ -274,12 +285,53 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
                 response_headers={"Set-Cookie": self.auth.cookie_header("", clear=True)},
             )
             return
-        if not self._begin_idempotency("POST", path):
+        if path != "/api/voice/speech" and not self._begin_idempotency("POST", path):
             return
         if path in INTERNAL_HTTP_ENDPOINTS:
             self._send_error(HTTPStatus.NOT_FOUND, "not_found", "not found")
             return
         if path != "/api/chat":
+            if path == "/api/voice/transcriptions":
+                try:
+                    duration_ms = int(self.headers.get("X-Audio-Duration-Ms", "0"))
+                    audio = self._read_binary_body(max_bytes=15 * 1024 * 1024)
+                    result = self.service.transcribe_voice(
+                        audio,
+                        content_type=self.headers.get("Content-Type", ""),
+                        duration_ms=duration_ms,
+                        filename=self.headers.get("X-Audio-Filename", "recording"),
+                    )
+                except ValueError as exc:
+                    self._send_error(HTTPStatus.BAD_REQUEST, "invalid_request", str(exc))
+                    return
+                except VoiceProviderError as exc:
+                    self._send_voice_error(exc)
+                    return
+                self._send_json(HTTPStatus.OK, result)
+                return
+            if path == "/api/voice/speech":
+                try:
+                    payload = self._read_json_body(max_bytes=16 * 1024)
+                    text = payload.get("text", "")
+                    voice_id = payload.get("voice_id")
+                    speaking_rate = payload.get("speaking_rate")
+                    if not isinstance(text, str):
+                        raise ValueError("text must be a string")
+                    if voice_id is not None and not isinstance(voice_id, str):
+                        raise ValueError("voice_id must be a string")
+                    if speaking_rate is not None:
+                        speaking_rate = float(speaking_rate)
+                    audio = self.service.synthesize_voice(
+                        text, voice_id=voice_id, speaking_rate=speaking_rate,
+                    )
+                except ValueError as exc:
+                    self._send_error(HTTPStatus.BAD_REQUEST, "invalid_request", str(exc))
+                    return
+                except VoiceProviderError as exc:
+                    self._send_voice_error(exc)
+                    return
+                self._send_binary(HTTPStatus.OK, audio.data, audio.content_type)
+                return
             if path == "/api/tasks":
                 try:
                     self._send_json(HTTPStatus.CREATED, self.service.create_task(self._read_json_body(max_bytes=32 * 1024)))
@@ -773,7 +825,8 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
             raise ValueError("invalid Content-Length") from exc
         if length < 0:
             raise ValueError("invalid Content-Length")
-        if length > 512 * 1024:
+        maximum = 15 * 1024 * 1024 if path == "/api/voice/transcriptions" else 512 * 1024
+        if length > maximum:
             raise ValueError("request body is too large")
         raw = self.rfile.read(length) if length else b""
         if length:
@@ -825,6 +878,25 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
         if not isinstance(payload, dict):
             raise ValueError("request body must be a JSON object")
         return payload
+
+    def _read_binary_body(self, max_bytes: int) -> bytes:
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError as exc:
+            raise ValueError("invalid Content-Length") from exc
+        if length <= 0:
+            raise ValueError("request body is required")
+        if length > max_bytes:
+            raise VoiceProviderError("audio_too_large", "录音文件超过 15 MiB，请缩短后重试。")
+        buffered = getattr(self, "_buffered_request_body", None)
+        if buffered is not None:
+            self._buffered_request_body = None
+            raw = bytes(buffered)
+        else:
+            raw = self.rfile.read(length)
+        if len(raw) != length:
+            raise ValueError("request body length does not match Content-Length")
+        return raw
 
     def _serve_static(self, request_path: str, *, head_only: bool = False) -> None:
         if self.config.public_deployment:
@@ -978,6 +1050,30 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _send_binary(self, status: HTTPStatus, data: bytes, content_type: str) -> None:
+        self.send_response(status)
+        self._send_common_headers()
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        try:
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError):
+            return
+
+    def _send_voice_error(self, error: VoiceProviderError) -> None:
+        statuses = {
+            "unsupported_audio": HTTPStatus.UNSUPPORTED_MEDIA_TYPE,
+            "audio_too_large": HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+            "recording_too_short": HTTPStatus.UNPROCESSABLE_ENTITY,
+            "recording_too_long": HTTPStatus.UNPROCESSABLE_ENTITY,
+            "empty_audio": HTTPStatus.BAD_REQUEST,
+            "stt_not_configured": HTTPStatus.SERVICE_UNAVAILABLE,
+            "tts_not_configured": HTTPStatus.SERVICE_UNAVAILABLE,
+        }
+        status = statuses.get(error.code, HTTPStatus.BAD_GATEWAY)
+        self._send_error(status, error.code, str(error), retryable=error.retryable)
+
     def _send_empty(self, status: HTTPStatus) -> None:
         self.send_response(status)
         self._send_common_headers()
@@ -991,12 +1087,15 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
             self.send_header("Vary", "Origin")
             self.send_header("Access-Control-Allow-Credentials", "true")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, Idempotency-Key")
+        self.send_header(
+            "Access-Control-Allow-Headers",
+            "Content-Type, Authorization, Idempotency-Key, X-Audio-Duration-Ms, X-Audio-Filename",
+        )
         self.send_header("Access-Control-Max-Age", "600")
         self.send_header("Cache-Control", cache_control)
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("Permissions-Policy", "camera=(), geolocation=()")
+        self.send_header("Permissions-Policy", "camera=(), geolocation=(), microphone=(self)")
 
     def _query_params(self, query: str) -> dict[str, list[str]]:
         return parse_qs(query, keep_blank_values=True)

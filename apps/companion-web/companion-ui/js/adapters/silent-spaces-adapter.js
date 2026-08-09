@@ -112,6 +112,9 @@ export function adaptCompanionSettings(raw) {
   const source = object(raw);
   const llm = object(source.llm);
   const companion = object(source.companion);
+  const tts = source.tts && typeof source.tts === 'object' ? source.tts : {};
+  const voice = source.voice && typeof source.voice === 'object' ? source.voice : {};
+  const providers = source.providers && typeof source.providers === 'object' ? source.providers : {};
   const temperature = Number(llm.temperature);
   const maxTokens = Number.parseInt(llm.max_tokens, 10);
   return {
@@ -123,6 +126,20 @@ export function adaptCompanionSettings(raw) {
     configured: llm.configured === true,
     instructions: typeof companion.instructions === 'string' ? companion.instructions.slice(0, 12000) : '',
     customized: companion.customized === true,
+    ttsBaseUrl: typeof tts.base_url === 'string' ? tts.base_url.trim().slice(0, 2048) : '',
+    ttsModel: text(tts.model, 256),
+    ttsApiKeyConfigured: tts.api_key_configured === true,
+    voiceEnabled: voice.voice_enabled !== false,
+    autoPlay: voice.auto_play === true,
+    voiceId: text(voice.voice_id, 128) || 'alloy',
+    speakingRate: Number.isFinite(Number(voice.speaking_rate))
+      ? Math.max(0.5, Math.min(2, Number(voice.speaking_rate))) : 1,
+    outputVolume: Number.isFinite(Number(voice.output_volume))
+      ? Math.max(0, Math.min(1, Number(voice.output_volume))) : 1,
+    sttProvider: text(providers.stt?.provider, 80) || 'openai-compatible',
+    sttConfigured: providers.stt?.configured === true,
+    ttsProvider: text(tts.provider || providers.tts?.provider, 80) || 'openai-compatible',
+    ttsConfigured: tts.configured === true || providers.tts?.configured === true,
     updatedAt: iso(source.updated_at),
   };
 }

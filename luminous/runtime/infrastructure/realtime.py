@@ -200,8 +200,8 @@ def _send_close(connection: socket.socket, code: int, reason: str) -> None:
     _send_frame(connection, 0x8, payload)
 
 
-def _send_frame(connection: socket.socket, opcode: int, payload: bytes) -> None:
-    if len(payload) > _MAX_FRAME_BYTES:
+def _send_frame(connection: socket.socket, opcode: int, payload: bytes, *, max_bytes: int = _MAX_FRAME_BYTES) -> None:
+    if len(payload) > max_bytes:
         raise ValueError("websocket frame too large")
     first = 0x80 | (opcode & 0x0F)
     length = len(payload)

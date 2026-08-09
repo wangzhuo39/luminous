@@ -10,6 +10,12 @@ export function createSilentSpacesFixtureDataSource({ date = '2026-07-26' } = {}
   let companionSettings = {
     llm: { base_url: '', model: '', temperature: 0.7, max_tokens: 768, api_key_configured: false, configured: false },
     companion: { instructions: '', customized: false },
+    tts: { provider: 'openai-compatible', base_url: '', model: '', api_key_configured: false, configured: false },
+    voice: { voice_enabled: true, auto_play: false, voice_id: 'alloy', speaking_rate: 1, output_volume: 1 },
+    providers: {
+      stt: { provider: 'openai-compatible', configured: false },
+      tts: { provider: 'openai-compatible', configured: false },
+    },
     updated_at: '',
   };
   return Object.freeze({
@@ -36,6 +42,27 @@ export function createSilentSpacesFixtureDataSource({ date = '2026-07-26' } = {}
           configured: Boolean(changes.base_url && changes.model && (companionSettings.llm.api_key_configured || changes.api_key)),
         },
         companion: { instructions: changes.companion_prompt, customized: Boolean(changes.companion_prompt) },
+        tts: {
+          ...companionSettings.tts,
+          base_url: changes.tts_base_url,
+          model: changes.tts_model,
+          api_key_configured: companionSettings.tts.api_key_configured || Boolean(changes.tts_api_key),
+          configured: Boolean(changes.tts_base_url && changes.tts_model && (companionSettings.tts.api_key_configured || changes.tts_api_key)),
+        },
+        voice: {
+          voice_enabled: changes.voice_enabled,
+          auto_play: changes.auto_play,
+          voice_id: changes.voice_id,
+          speaking_rate: changes.speaking_rate,
+          output_volume: changes.output_volume,
+        },
+        providers: {
+          ...companionSettings.providers,
+          tts: {
+            provider: 'openai-compatible',
+            configured: Boolean(changes.tts_base_url && changes.tts_model && (companionSettings.tts.api_key_configured || changes.tts_api_key)),
+          },
+        },
         updated_at: new Date().toISOString(),
       };
       return companionSettings;

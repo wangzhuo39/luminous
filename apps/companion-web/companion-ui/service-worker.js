@@ -1,4 +1,4 @@
-const CACHE_NAME = 'luminous-shell-v19';
+const CACHE_NAME = 'luminous-shell-v20';
 const SHELL_ASSETS = [
   './',
   './index.html',
@@ -51,6 +51,7 @@ const SHELL_ASSETS = [
   './styles/features/main-scene/portals.css',
   './styles/features/main-scene/responsive.css',
   './styles/features/main-scene/status.css',
+  './styles/features/main-scene/voice.css',
   './js/main.js',
   './js/app-state.js',
   './js/dom-registry.js',
@@ -72,6 +73,7 @@ const SHELL_ASSETS = [
   './js/services/api-client.js',
   './js/services/life-flow-api.js',
   './js/services/silent-spaces-api.js',
+  './js/services/voice-api.js',
   './js/shared/errors.js',
   './js/shared/operation.js',
   './js/shared/time.js',
@@ -99,6 +101,9 @@ const SHELL_ASSETS = [
   './js/features/main-scene/main-scene-shell.js',
   './js/features/main-scene/scene-background.js',
   './js/features/main-scene/main-scene-view.js',
+  './js/features/voice/voice-player.js',
+  './js/features/voice/voice-recorder.js',
+  './js/features/voice/voice-runtime.js',
   './js/state/app-store.js',
   './js/state/core-state.js',
   './js/state/life-flow-schema.js',

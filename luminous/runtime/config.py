@@ -7,6 +7,10 @@ from typing import Mapping
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_TTS_INSTRUCT_TEXT = (
+    "保持叶筝平时的声音。平静、自然、略微克制。"
+    "语速中等略慢。没有明显笑意。句尾自然收住。"
+)
 LOWERCASE_LLM_ALIASES = frozenset({"base_url", "key", "model"})
 
 
@@ -39,6 +43,19 @@ class BackendConfig:
     session_ttl_seconds: int = 7 * 24 * 60 * 60
     session_idle_seconds: int = 24 * 60 * 60
     cors_origins: tuple[str, ...] = ()
+    stt_provider: str = ""
+    stt_base_url: str = ""
+    stt_api_key: str = ""
+    stt_model: str = ""
+    stt_stream_url: str = ""
+    tts_provider: str = ""
+    tts_base_url: str = ""
+    tts_api_key: str = ""
+    tts_model: str = ""
+    tts_stream_url: str = ""
+    tts_voice: str = "alloy"
+    tts_instruct_text: str = DEFAULT_TTS_INSTRUCT_TEXT
+    voice_timeout_seconds: int = 60
 
     @property
     def llm_configured(self) -> bool:
@@ -77,6 +94,14 @@ class BackendConfig:
     @property
     def cookie_auth_configured(self) -> bool:
         return bool(self.tester_access_code and self.session_secret)
+
+    @property
+    def stt_configured(self) -> bool:
+        return self.mock or bool(self.stt_base_url and self.stt_api_key and self.stt_model)
+
+    @property
+    def tts_configured(self) -> bool:
+        return self.mock or bool(self.tts_base_url and self.tts_api_key and self.tts_model)
 
     def validate_server_boundary(self) -> None:
         if self.deployment_mode not in {"local", "public"}:
@@ -159,6 +184,19 @@ def load_backend_config(
         session_ttl_seconds=int(value("LUMINOUS_SESSION_TTL_SECONDS", default=str(7 * 24 * 60 * 60))),
         session_idle_seconds=int(value("LUMINOUS_SESSION_IDLE_SECONDS", default=str(24 * 60 * 60))),
         cors_origins=cors_origins,
+        stt_provider=value("LUMINOUS_STT_PROVIDER", default="openai-compatible").strip(),
+        stt_base_url=value("LUMINOUS_STT_BASE_URL").rstrip("/"),
+        stt_api_key=value("LUMINOUS_STT_API_KEY"),
+        stt_model=value("LUMINOUS_STT_MODEL", default="SenseVoiceSmall").strip(),
+        stt_stream_url=value("LUMINOUS_STT_STREAM_URL").rstrip("/"),
+        tts_provider=value("LUMINOUS_TTS_PROVIDER", default="openai-compatible").strip(),
+        tts_base_url=value("LUMINOUS_TTS_BASE_URL").rstrip("/"),
+        tts_api_key=value("LUMINOUS_TTS_API_KEY"),
+        tts_model=value("LUMINOUS_TTS_MODEL", default="cosyvoice-v2").strip(),
+        tts_stream_url=value("LUMINOUS_TTS_STREAM_URL").rstrip("/"),
+        tts_voice=value("LUMINOUS_TTS_VOICE", default="alloy").strip(),
+        tts_instruct_text=value("LUMINOUS_TTS_INSTRUCT_TEXT", default=DEFAULT_TTS_INSTRUCT_TEXT).strip(),
+        voice_timeout_seconds=int(value("LUMINOUS_VOICE_TIMEOUT", default="60")),
     )
 
 
@@ -166,6 +204,8 @@ def _read_env_file(path: Path) -> dict[str, str]:
     if not path.exists():
         return {}
     values: dict[str, str] = {}
+    lowercase_profiles: list[dict[str, str]] = []
+    current_profile: dict[str, str] = {}
     for line in path.read_text(encoding="utf-8").splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#") or "=" not in stripped:
@@ -174,10 +214,34 @@ def _read_env_file(path: Path) -> dict[str, str]:
         key = key.strip()
         value = raw_value.strip().strip('"').strip("'")
         if key in LOWERCASE_LLM_ALIASES:
+            if key == "base_url" and current_profile:
+                lowercase_profiles.append(current_profile)
+                current_profile = {}
+            current_profile[key] = value
             values.setdefault(key, value)
         else:
             values[key] = value
+    if current_profile:
+        lowercase_profiles.append(current_profile)
+    for profile in lowercase_profiles:
+        if _is_legacy_tts_profile(profile):
+            values.setdefault("LUMINOUS_TTS_PROVIDER", "openai-compatible")
+            values.setdefault("LUMINOUS_TTS_BASE_URL", _openai_v1_base(str(profile.get("base_url", ""))))
+            values.setdefault("LUMINOUS_TTS_API_KEY", str(profile.get("key", "")))
+            values.setdefault("LUMINOUS_TTS_MODEL", str(profile.get("model", "")))
     return values
+
+
+def _is_legacy_tts_profile(profile: Mapping[str, str]) -> bool:
+    model = str(profile.get("model", "")).strip().lower()
+    return bool(profile.get("base_url") and profile.get("key") and (
+        model.startswith("tts-") or model == "gpt-4o-mini-tts"
+    ))
+
+
+def _openai_v1_base(base_url: str) -> str:
+    normalized = base_url.strip().rstrip("/")
+    return normalized if normalized.endswith("/v1") else f"{normalized}/v1"
 
 
 def _truthy(value: str) -> bool:

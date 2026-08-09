@@ -173,9 +173,27 @@ export function renderCompanionSettings(dom, state) {
   dom.companionTemperature.value = String(draft.temperature);
   dom.companionMaxTokens.value = String(draft.maxTokens);
   dom.companionInstructions.value = draft.instructions;
+  if (dom.ttsBaseUrl) dom.ttsBaseUrl.value = draft.ttsBaseUrl;
+  if (dom.ttsModel) dom.ttsModel.value = draft.ttsModel;
+  if (dom.voiceEnabled) dom.voiceEnabled.checked = draft.voiceEnabled;
+  if (dom.voiceAutoPlay) dom.voiceAutoPlay.checked = draft.autoPlay;
+  if (dom.voiceId) dom.voiceId.value = draft.voiceId;
+  if (dom.voiceRate) dom.voiceRate.value = String(draft.speakingRate);
+  if (dom.voiceVolume) dom.voiceVolume.value = String(draft.outputVolume);
+  if (dom.voiceProviderSummary) dom.voiceProviderSummary.textContent = `语音合成：${draft.ttsConfigured ? '已配置' : '未配置'}`;
+  const ttsDraftChanged = Boolean(draft.ttsApiKey)
+    || draft.ttsBaseUrl !== companion.value.ttsBaseUrl
+    || draft.ttsModel !== companion.value.ttsModel;
+  if (dom.voiceTest) {
+    dom.voiceTest.disabled = companion.status === 'saving' || !draft.ttsConfigured || ttsDraftChanged;
+    dom.voiceTest.title = ttsDraftChanged ? '先保存 TTS API 设置' : '';
+  }
   if (dom.companionApiKey.value !== draft.apiKey) dom.companionApiKey.value = draft.apiKey;
   dom.companionApiKey.placeholder = companion.value.apiKeyConfigured ? '已保存；留空表示不修改' : '输入 API key';
   dom.companionKeyState.textContent = companion.value.apiKeyConfigured ? '密钥已保存在服务端，页面不会回显。' : '尚未保存 API key。';
+  if (dom.ttsApiKey && dom.ttsApiKey.value !== draft.ttsApiKey) dom.ttsApiKey.value = draft.ttsApiKey;
+  if (dom.ttsApiKey) dom.ttsApiKey.placeholder = companion.value.ttsApiKeyConfigured ? '已保存；留空表示不修改' : '输入 TTS API key';
+  if (dom.ttsKeyState) dom.ttsKeyState.textContent = companion.value.ttsApiKeyConfigured ? 'TTS 密钥已保存在服务端，页面不会回显。' : '尚未保存 TTS API key。';
   dom.companionConnectionState.textContent = companion.value.configured ? '当前 LLM 连接信息完整。' : '请填写地址、API key 与模型。';
   dom.companionSave.disabled = !companion.dirty || companion.status === 'saving';
   dom.companionSave.textContent = companion.status === 'saving' ? '正在保存…' : companion.dirty ? '保存连接与设定' : '已是当前设定';

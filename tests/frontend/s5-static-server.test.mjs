@@ -31,7 +31,10 @@ test('bundled HTTP server serves PWA assets with explicit MIME and hardening hea
     assert.equal(manifest.headers.get('cache-control'), 'no-cache');
     assert.equal(manifest.headers.get('x-content-type-options'), 'nosniff');
     assert.equal(manifest.headers.get('referrer-policy'), 'no-referrer');
-    assert.equal(manifest.headers.get('permissions-policy'), 'camera=(), geolocation=()');
+    assert.equal(
+      manifest.headers.get('permissions-policy'),
+      'camera=(), geolocation=(), microphone=(self)',
+    );
     const serviceWorker = await fetch(`http://127.0.0.1:${port}/service-worker.js`);
     assert.equal(serviceWorker.status, 200);
     assert.match(serviceWorker.headers.get('content-type') ?? '', /javascript/);

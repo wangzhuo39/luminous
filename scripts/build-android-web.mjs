@@ -69,10 +69,17 @@ const androidBundleRequirements = [
     'data-hook="companion-settings-form"',
     'data-hook="companion-api-key"',
     'data-hook="companion-instructions"',
+    'data-hook="tts-base-url"',
+    'data-hook="tts-api-key"',
+    'data-hook="tts-model"',
     'android-bootstrap-',
   ]],
   ['js/services/silent-spaces-api.js', ['/api/settings/companion', 'saveCompanionSettings']],
   ['js/features/silent-spaces/silent-spaces-controller.js', ['activate', 'saveCompanionSettings']],
+  ['native-runtime.js', ['responseType:"arraybuffer"', 'synthesizeVoice', 'VoiceRecorder', 'startMessage', 'startStream']],
+  ['js/services/voice-api.js', ['base64AudioBlob', 'synthesizeVoice']],
+  ['js/features/voice/voice-recorder.js', ['nativeVoiceRecorder', 'startMessage']],
+  ['js/features/voice/voice-call.js', ['addCallListener', 'addVadListener', 'connectCall', 'setCallAudioEnabled', 'startStream', 'stopStream']],
 ];
 
 for (const [relativePath, requiredText] of androidBundleRequirements) {

@@ -5,6 +5,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable, Sequence
 from typing import Any
+from urllib.parse import urlparse
 
 from luminous.runtime.config import BackendConfig
 
@@ -66,6 +67,8 @@ def _chat_url(base_url: str) -> str:
     clean = base_url.rstrip("/")
     if clean.endswith("/chat/completions"):
         return clean
+    if urlparse(clean).path in {"", "/"}:
+        clean = f"{clean}/v1"
     return f"{clean}/chat/completions"
 
 

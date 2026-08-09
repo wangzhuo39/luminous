@@ -6,6 +6,7 @@ export {
   beginChatSubmission,
   beginInitialLoad,
   completeChatSubmission,
+  completeVoiceTurn,
   completeInitialLoad,
   failChatSubmission,
   failInitialLoad,

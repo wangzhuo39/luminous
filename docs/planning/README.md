@@ -4,6 +4,8 @@
 
 当前已批准下一轮产品主线：在已有长期记忆、主动联系、Android 通知和陪伴生活流上，依次建设语音存在、共同刷内容和受控上下文 adapter。
 
+目标架构以 [Luminous Companion Runtime 目标架构](../architecture/luminous_companion_runtime_architecture.md) 为唯一规范性入口；阶段计划描述交付顺序，不得反向改变其中的模块所有权和依赖边界。
+
 ## 当前产品计划
 
 - [语音存在与共同刷内容拓展计划](2026-08-05-voice-and-shared-entertainment-expansion-plan.md)：先完成按住说话、角色语音与主动语音来信，再支持把小红书帖子、视频和网页分享给栖光，形成可续接、可回看、可删除的共同娱乐活动。

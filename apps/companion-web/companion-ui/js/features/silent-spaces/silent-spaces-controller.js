@@ -10,18 +10,24 @@ function initialState() {
   const companion = {
     baseUrl: '', model: '', temperature: 0.7, maxTokens: 768,
     apiKeyConfigured: false, configured: false, instructions: '', customized: false, updatedAt: '',
+    ttsBaseUrl: '', ttsModel: '', ttsApiKeyConfigured: false,
+    voiceEnabled: true, autoPlay: false, voiceId: 'alloy', speakingRate: 1, outputVolume: 1,
+    sttProvider: 'openai-compatible', sttConfigured: false,
+    ttsProvider: 'openai-compatible', ttsConfigured: false,
   };
   return {
     outbox: { status: 'idle', items: [], actions: {} },
     memory: { status: 'idle', query: '', items: [], editKey: '', editDraft: '', forgetKey: '', actionKey: '', actionStatus: 'idle' },
     privacy: {
       status: 'idle', value: privacy, draft: { ...privacy }, dirty: false, loaded: false,
-      companion: { status: 'idle', value: companion, draft: { ...companion, apiKey: '' }, dirty: false },
+      companion: { status: 'idle', value: companion, draft: { ...companion, apiKey: '', ttsApiKey: '' }, dirty: false },
     },
   };
 }
 
-export function initSilentSpaces(dom, { dataSource, onStateChange, announce = () => {} }) {
+export function initSilentSpaces(dom, {
+  dataSource, onStateChange, announce = () => {}, onVoiceSettings = () => {}, onTestVoice = async () => {},
+}) {
   let state = initialState();
   const controllers = { outbox: null, memory: null, privacy: null };
   const update = (space, patch) => {
@@ -55,9 +61,10 @@ export function initSilentSpaces(dom, { dataSource, onStateChange, announce = ()
         value, draft: { ...value }, dirty: false, loaded: true, status: 'ready',
         companion: {
           status: raw.companionUnavailable ? 'load-error' : 'ready',
-          value: companion, draft: { ...companion, apiKey: '' }, dirty: false,
+          value: companion, draft: { ...companion, apiKey: '', ttsApiKey: '' }, dirty: false,
         },
       });
+      onVoiceSettings(companion);
     });
 
   const activate = (space) => {
@@ -143,9 +150,17 @@ export function initSilentSpaces(dom, { dataSource, onStateChange, announce = ()
       maxTokens: Number(dom.privacy.companionMaxTokens.value),
       apiKey: dom.privacy.companionApiKey.value.trim(),
       instructions: dom.privacy.companionInstructions.value,
+      ttsBaseUrl: dom.privacy.ttsBaseUrl.value.trim(),
+      ttsApiKey: dom.privacy.ttsApiKey.value.trim(),
+      ttsModel: dom.privacy.ttsModel.value.trim(),
+      voiceEnabled: dom.privacy.voiceEnabled.checked,
+      autoPlay: dom.privacy.voiceAutoPlay.checked,
+      voiceId: dom.privacy.voiceId.value.trim(),
+      speakingRate: Number(dom.privacy.voiceRate.value),
+      outputVolume: Number(dom.privacy.voiceVolume.value),
     };
-    const comparable = ({ apiKey, ...value }) => value;
-    const dirty = Boolean(draft.apiKey)
+    const comparable = ({ apiKey, ttsApiKey, ...value }) => value;
+    const dirty = Boolean(draft.apiKey || draft.ttsApiKey)
       || JSON.stringify(comparable(draft)) !== JSON.stringify(state.privacy.companion.value);
     update('privacy', {
       companion: { ...state.privacy.companion, draft, dirty, status: 'ready' },
@@ -163,17 +178,43 @@ export function initSilentSpaces(dom, { dataSource, onStateChange, announce = ()
       temperature: current.draft.temperature,
       max_tokens: current.draft.maxTokens,
       companion_prompt: current.draft.instructions,
+      tts_base_url: current.draft.ttsBaseUrl,
+      tts_model: current.draft.ttsModel,
+      voice_enabled: current.draft.voiceEnabled,
+      auto_play: current.draft.autoPlay,
+      voice_id: current.draft.voiceId,
+      speaking_rate: current.draft.speakingRate,
+      output_volume: current.draft.outputVolume,
     };
     if (current.draft.apiKey) changes.api_key = current.draft.apiKey;
+    if (current.draft.ttsApiKey) changes.tts_api_key = current.draft.ttsApiKey;
     try {
       const value = adaptCompanionSettings(await dataSource.saveCompanionSettings({ changes }));
       update('privacy', {
-        companion: { status: 'saved', value, draft: { ...value, apiKey: '' }, dirty: false },
+        companion: { status: 'saved', value, draft: { ...value, apiKey: '', ttsApiKey: '' }, dirty: false },
       });
+      onVoiceSettings(value);
       announce('连接与伴侣设定已保存。');
     } catch {
       update('privacy', { companion: { ...state.privacy.companion, status: 'error' } });
     }
+  });
+
+  dom.privacy.voiceTest?.addEventListener('click', async () => {
+    const current = state.privacy.companion;
+    dom.privacy.voiceTest.disabled = true;
+    dom.privacy.voiceTestStatus.textContent = '正在准备测试声音…';
+    try {
+      await onTestVoice({
+        voiceEnabled: true,
+        voiceId: current.draft.voiceId,
+        speakingRate: current.draft.speakingRate,
+        outputVolume: current.draft.outputVolume,
+      });
+      dom.privacy.voiceTestStatus.textContent = '测试声音已播放。';
+    } catch {
+      dom.privacy.voiceTestStatus.textContent = '测试声音暂时不可用。';
+    } finally { dom.privacy.voiceTest.disabled = false; }
   });
 
   return Object.freeze({

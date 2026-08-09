@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from luminous.runtime.application.runtime import CompanionRuntime
+from luminous.runtime.application.voice_service import VoiceService
 from luminous.runtime.config import BackendConfig
 from luminous.runtime.infrastructure.client import ModelClient
 from luminous.runtime.infrastructure.public_api import (
@@ -40,9 +41,11 @@ class CompanionService:
         client: ModelClient | None = None,
         store: CompanionRuntimeStore | None = None,
         clock: callable | None = None,
+        voice_service: VoiceService | None = None,
     ) -> None:
         self.config = config
         self.runtime = CompanionRuntime(config, client=client, store=store, clock=clock)
+        self.voice = voice_service or VoiceService(config)
 
     def chat(self, user_text: str, history: Sequence[dict[str, object]] | None = None) -> dict[str, object]:
         return public_chat(self.runtime.chat(user_text, history))
@@ -142,6 +145,23 @@ class CompanionService:
 
     def update_companion_settings(self, updates: dict[str, Any]) -> dict[str, object]:
         return self.runtime.update_companion_settings(updates)
+
+    def transcribe_voice(
+        self, audio: bytes, *, content_type: str, duration_ms: int, filename: str = "recording",
+    ) -> dict[str, object]:
+        return self.voice.transcribe(
+            audio, content_type=content_type, duration_ms=duration_ms, filename=filename,
+        )
+
+    def synthesize_voice(
+        self, text: str, *, voice_id: str | None = None, speaking_rate: float | None = None,
+    ):
+        settings = self.runtime.companion_settings()["voice"]
+        return self.voice.synthesize(
+            text,
+            voice_id=voice_id or str(settings["voice_id"]),
+            speaking_rate=float(speaking_rate if speaking_rate is not None else settings["speaking_rate"]),
+        )
 
     def register_notification_device(
         self, payload: dict[str, Any], *, session_digest: str = "",

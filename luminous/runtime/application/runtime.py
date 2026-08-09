@@ -69,6 +69,17 @@ class CompanionRuntime:
             "temperature": config.temperature,
             "max_tokens": config.max_tokens,
             "companion_prompt": "",
+            "voice_enabled": True,
+            "auto_play": False,
+            "stt_base_url": config.stt_base_url,
+            "stt_api_key": config.stt_api_key,
+            "stt_model": config.stt_model,
+            "tts_base_url": config.tts_base_url,
+            "tts_api_key": config.tts_api_key,
+            "tts_model": config.tts_model,
+            "voice_id": config.tts_voice,
+            "speaking_rate": 1.0,
+            "output_volume": 1.0,
         }
         self._refresh_companion_settings()
 
@@ -387,7 +398,10 @@ class CompanionRuntime:
             raise ValueError("settings must be a JSON object")
         allowed = {
             "base_url", "api_key", "clear_api_key", "model", "temperature",
-            "max_tokens", "companion_prompt",
+            "max_tokens", "companion_prompt", "voice_enabled", "auto_play",
+            "stt_base_url", "stt_api_key", "clear_stt_api_key", "stt_model",
+            "tts_base_url", "tts_api_key", "clear_tts_api_key", "tts_model",
+            "voice_id", "speaking_rate", "output_volume",
         }
         unknown = sorted(set(updates) - allowed)
         if unknown:
@@ -395,11 +409,23 @@ class CompanionRuntime:
 
         stored = self.store.read_companion_settings()
         candidate = {key: value for key, value in stored.items() if key != "updated_at"}
-        for key in ("base_url", "model", "companion_prompt"):
+        for key in (
+            "base_url", "model", "companion_prompt",
+            "stt_base_url", "stt_model", "tts_base_url", "tts_model",
+        ):
             if key in updates:
                 if not isinstance(updates[key], str):
                     raise ValueError(f"{key} must be a string")
                 candidate[key] = updates[key].strip()
+        if "voice_id" in updates:
+            if not isinstance(updates["voice_id"], str):
+                raise ValueError("voice_id must be a string")
+            candidate["voice_id"] = updates["voice_id"].strip()
+        for key in ("voice_enabled", "auto_play"):
+            if key in updates:
+                if not isinstance(updates[key], bool):
+                    raise ValueError(f"{key} must be a boolean")
+                candidate[key] = updates[key]
         if "api_key" in updates:
             if not isinstance(updates["api_key"], str):
                 raise ValueError("api_key must be a string")
@@ -407,7 +433,21 @@ class CompanionRuntime:
                 candidate["api_key"] = updates["api_key"].strip()
         if updates.get("clear_api_key") is True:
             candidate["api_key"] = ""
-        for key in ("temperature", "max_tokens"):
+        if "stt_api_key" in updates:
+            if not isinstance(updates["stt_api_key"], str):
+                raise ValueError("stt_api_key must be a string")
+            if updates["stt_api_key"].strip():
+                candidate["stt_api_key"] = updates["stt_api_key"].strip()
+        if updates.get("clear_stt_api_key") is True:
+            candidate["stt_api_key"] = ""
+        if "tts_api_key" in updates:
+            if not isinstance(updates["tts_api_key"], str):
+                raise ValueError("tts_api_key must be a string")
+            if updates["tts_api_key"].strip():
+                candidate["tts_api_key"] = updates["tts_api_key"].strip()
+        if updates.get("clear_tts_api_key") is True:
+            candidate["tts_api_key"] = ""
+        for key in ("temperature", "max_tokens", "speaking_rate", "output_volume"):
             if key in updates:
                 candidate[key] = updates[key]
 
@@ -434,6 +474,12 @@ class CompanionRuntime:
         self.config.model = str(effective["model"])
         self.config.temperature = float(effective["temperature"])
         self.config.max_tokens = int(effective["max_tokens"])
+        self.config.stt_base_url = str(effective["stt_base_url"])
+        self.config.stt_api_key = str(effective["stt_api_key"])
+        self.config.stt_model = str(effective["stt_model"])
+        self.config.tts_base_url = str(effective["tts_base_url"])
+        self.config.tts_api_key = str(effective["tts_api_key"])
+        self.config.tts_model = str(effective["tts_model"])
         self.prompt_builder.set_companion_prompt(str(effective["companion_prompt"]))
         return effective
 
@@ -452,6 +498,51 @@ class CompanionRuntime:
             "companion": {
                 "instructions": str(effective["companion_prompt"]),
                 "customized": bool(effective["companion_prompt"]),
+            },
+            "stt": {
+                "provider": self.config.stt_provider or "openai-compatible",
+                "base_url": str(effective["stt_base_url"]),
+                "model": str(effective["stt_model"]),
+                "api_key_configured": bool(effective["stt_api_key"]),
+                "configured": bool(
+                    self.config.mock
+                    or (
+                        effective["stt_base_url"]
+                        and effective["stt_api_key"]
+                        and effective["stt_model"]
+                    )
+                ),
+            },
+            "tts": {
+                "provider": self.config.tts_provider or "openai-compatible",
+                "base_url": str(effective["tts_base_url"]),
+                "model": str(effective["tts_model"]),
+                "api_key_configured": bool(effective["tts_api_key"]),
+                "configured": bool(
+                    self.config.mock
+                    or (
+                        effective["tts_base_url"]
+                        and effective["tts_api_key"]
+                        and effective["tts_model"]
+                    )
+                ),
+            },
+            "voice": {
+                "voice_enabled": bool(effective["voice_enabled"]),
+                "auto_play": bool(effective["auto_play"]),
+                "voice_id": str(effective["voice_id"]),
+                "speaking_rate": float(effective["speaking_rate"]),
+                "output_volume": float(effective["output_volume"]),
+            },
+            "providers": {
+                "stt": {
+                    "provider": self.config.stt_provider or "openai-compatible",
+                    "configured": self.config.stt_configured,
+                },
+                "tts": {
+                    "provider": self.config.tts_provider or "openai-compatible",
+                    "configured": self.config.tts_configured,
+                },
             },
             "updated_at": updated_at
             if updated_at is not None
@@ -948,19 +1039,36 @@ def _validate_companion_settings(settings: dict[str, Any]) -> None:
     base_url = str(settings.get("base_url", "")).strip()
     api_key = str(settings.get("api_key", ""))
     model = str(settings.get("model", "")).strip()
+    stt_base_url = str(settings.get("stt_base_url", "")).strip()
+    stt_api_key = str(settings.get("stt_api_key", ""))
+    stt_model = str(settings.get("stt_model", "")).strip()
+    tts_base_url = str(settings.get("tts_base_url", "")).strip()
+    tts_api_key = str(settings.get("tts_api_key", ""))
+    tts_model = str(settings.get("tts_model", "")).strip()
     instructions = str(settings.get("companion_prompt", "")).strip()
-    if len(base_url) > 2048:
-        raise ValueError("base_url is too long")
-    if base_url:
-        parsed = urlparse(base_url)
-        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-            raise ValueError("base_url must be an http or https URL")
-        if parsed.username or parsed.password or parsed.query or parsed.fragment:
-            raise ValueError("base_url must not contain credentials, query, or fragment")
+    for key, value in (
+        ("base_url", base_url), ("stt_base_url", stt_base_url), ("tts_base_url", tts_base_url),
+    ):
+        if len(value) > 2048:
+            raise ValueError(f"{key} is too long")
+        if value:
+            parsed = urlparse(value)
+            if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+                raise ValueError(f"{key} must be an http or https URL")
+            if parsed.username or parsed.password or parsed.query or parsed.fragment:
+                raise ValueError(f"{key} must not contain credentials, query, or fragment")
     if len(api_key) > 4096:
         raise ValueError("api_key is too long")
+    if len(stt_api_key) > 4096:
+        raise ValueError("stt_api_key is too long")
+    if len(tts_api_key) > 4096:
+        raise ValueError("tts_api_key is too long")
     if len(model) > 256:
         raise ValueError("model is too long")
+    if len(stt_model) > 256:
+        raise ValueError("stt_model is too long")
+    if len(tts_model) > 256:
+        raise ValueError("tts_model is too long")
     if len(instructions) > 12000:
         raise ValueError("companion_prompt is too long")
     try:
@@ -977,6 +1085,19 @@ def _validate_companion_settings(settings: dict[str, Any]) -> None:
         raise ValueError("max_tokens must be an integer")
     if not 1 <= max_tokens <= 32768:
         raise ValueError("max_tokens must be between 1 and 32768")
+    voice_id = str(settings.get("voice_id", "")).strip()
+    if not voice_id or len(voice_id) > 128:
+        raise ValueError("voice_id must be between 1 and 128 characters")
+    for key, minimum, maximum in (("speaking_rate", 0.5, 2.0), ("output_volume", 0.0, 1.0)):
+        try:
+            value = float(settings.get(key))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{key} must be a number") from exc
+        if not math.isfinite(value) or not minimum <= value <= maximum:
+            raise ValueError(f"{key} must be between {minimum:g} and {maximum:g}")
+    for key in ("voice_enabled", "auto_play"):
+        if not isinstance(settings.get(key), bool):
+            raise ValueError(f"{key} must be a boolean")
 
 
 def _risk_flags(user_text: str, assistant_text: str) -> list[str]:

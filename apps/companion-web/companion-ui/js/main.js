@@ -1,6 +1,7 @@
 import { loadInitialViewModels } from './fixture-adapter.js';
 import {
   commitConfirmedActionResult,
+  completeVoiceTurn,
   getState,
   initializeState,
   setActiveSpace,
@@ -41,6 +42,7 @@ import { mountMainSceneShell } from './features/main-scene/main-scene-shell.js';
 import { createMainSceneView } from './features/main-scene/main-scene-view.js';
 import { createDomRegistry } from './dom-registry.js';
 import { initAuthGate } from './features/auth/auth-gate.js';
+import { initVoiceRuntime } from './features/voice/voice-runtime.js';
 
 const mainSceneShell = mountMainSceneShell(document.querySelector('#luminous-scene'));
 
@@ -203,8 +205,7 @@ async function main() {
       ? () => new Date(`${todayFixture.date_iso}T07:20:00+08:00`)
       : () => new Date(),
   });
-  let lifeFlowController = null;
-  let actionController = null;
+  let lifeFlowController = null; let actionController = null;
   let previousLifeFlowView = null;
   let previousTaskActionStatus = 'idle';
   let previousRoutineActionStatus = 'idle';
@@ -216,12 +217,16 @@ async function main() {
   const announce = (message) => {
     if (dom.statusNode) dom.statusNode.textContent = message;
   };
+  let conversation = null; const voiceRuntime = initVoiceRuntime(dom, { runtimeMode, announce,
+    onRealtimeTurn: (transcript, reply) => completeVoiceTurn(transcript, reply) && render(), onVoiceMessage: (transcript) => conversation?.submitText(transcript) });
   const silentSpacesController = initSilentSpaces(dom, {
     dataSource: runtimeMode === 'fixture'
       ? createSilentSpacesFixtureDataSource({ date: todayFixture.date_iso })
       : silentSpacesApi,
     announce,
     onStateChange: render,
+    onVoiceSettings: voiceRuntime.setSettings,
+    onTestVoice: voiceRuntime.testVoice,
   });
   activateSilentSpace = (space) => silentSpacesController.activate(space);
   renderSilentSpaces = () => silentSpacesController.render();
@@ -449,7 +454,7 @@ async function main() {
   const nativeNotifications = initNativeNotifications();
   renderProductization = () => pwaExperience.render();
   render();
-  const conversation = initConversation(dom, {
+  conversation = initConversation(dom, {
     mode: runtimeMode,
     sendChat: sendChatMessage,
     announce(message) {
@@ -463,6 +468,13 @@ async function main() {
     onDraftSent() {
       clearRecoverableDraft(draftStorage);
       if (dom.draftNotice) dom.draftNotice.hidden = true;
+      voiceRuntime.resetAfterSend();
+    },
+    onReply(message) {
+      voiceRuntime.onReply(message);
+    },
+    onSendingChange(value) {
+      voiceRuntime.setSending(value);
     },
   });
   const runtime = initCoreRuntime({
@@ -477,6 +489,7 @@ async function main() {
   window.addEventListener('pagehide', () => {
     authGate.destroy();
     conversation.destroy();
+    voiceRuntime.destroy();
     lifeFlowController.destroy();
     taskView.destroy();
     routineView.destroy();

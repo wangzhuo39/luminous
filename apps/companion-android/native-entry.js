@@ -1,11 +1,12 @@
 import { App } from '@capacitor/app';
-import { Capacitor, registerPlugin } from '@capacitor/core';
+import { Capacitor, CapacitorHttp, registerPlugin } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 
 const API_BASE = 'https://app.havilume.me';
 const ACTIVE_REMINDER_STATUSES = new Set(['scheduled', 'due', 'snoozed']);
 const listeners = [];
 const RealtimeCompanion = registerPlugin('RealtimeCompanion');
+const VoiceRecorder = registerPlugin('VoiceRecorder');
 
 window.__LUMINOUS_NATIVE__ = Capacitor.isNativePlatform();
 window.__LUMINOUS_API_BASE__ = window.__LUMINOUS_NATIVE__ ? API_BASE : '';
@@ -70,6 +71,46 @@ async function acknowledgeNotification(messageId, receiptType = 'notification_op
   if (!window.__LUMINOUS_NATIVE__ || !messageId) return;
   await RealtimeCompanion.acknowledge({ messageId, receiptType }).catch(() => {});
 }
+
+function responseHeader(headers, name) {
+  const expected = name.toLowerCase();
+  const entry = Object.entries(headers ?? {}).find(([key]) => key.toLowerCase() === expected);
+  return entry?.[1] ?? '';
+}
+
+async function synthesizeVoice({ text, voiceId = 'alloy', speakingRate = 1 } = {}) {
+  if (!window.__LUMINOUS_NATIVE__) throw new Error('native voice transport is unavailable');
+  const response = await CapacitorHttp.post({
+    url: `${API_BASE}/api/voice/speech`,
+    headers: { 'Content-Type': 'application/json' },
+    data: { text, voice_id: voiceId, speaking_rate: speakingRate },
+    responseType: 'arraybuffer',
+    connectTimeout: 15_000,
+    readTimeout: 65_000,
+  });
+  if (response.status < 200 || response.status >= 300 || typeof response.data !== 'string') {
+    throw new Error(`voice request failed with status ${response.status}`);
+  }
+  return {
+    data: response.data,
+    contentType: responseHeader(response.headers, 'content-type') || 'audio/mpeg',
+  };
+}
+
+const voice = Object.freeze({
+  startMessage: () => VoiceRecorder.start({ mode: 'message' }),
+  stopMessage: () => VoiceRecorder.stop({ mode: 'message' }),
+  transcribeMessage: () => VoiceRecorder.transcribeMessage(),
+  discardMessage: () => VoiceRecorder.discardMessage(),
+  startStream: () => VoiceRecorder.start({ mode: 'stream' }),
+  stopStream: () => VoiceRecorder.stop({ mode: 'stream' }),
+  connectCall: () => VoiceRecorder.connectCall(),
+  sendCallEvent: (event) => VoiceRecorder.sendCallEvent({ event }),
+  closeCall: () => VoiceRecorder.closeCall(),
+  setCallAudioEnabled: (enabled) => VoiceRecorder.setCallAudioEnabled({ enabled }),
+  addCallListener: (listener) => VoiceRecorder.addListener('call', listener),
+  addVadListener: (listener) => VoiceRecorder.addListener('vad', listener),
+});
 
 function reminderSchedule(reminder, at) {
   const allowWhileIdle = true;
@@ -156,7 +197,9 @@ window.LuminousNative = Object.freeze({
   permissionState,
   reminderSchedule,
   stableNotificationId,
+  synthesizeVoice,
   syncReminder,
+  voice,
 });
 window.LuminousNativeReady = initialize();
 

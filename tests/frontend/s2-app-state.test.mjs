@@ -79,6 +79,17 @@ test('submission is non-optimistic, immutable and duplicate-safe', () => {
   assert.equal(getState().conversation.draft, '  请陪陪我  ');
 });
 
+test('a direct voice submission keeps the text input draft empty', () => {
+  initializeState(viewModels(), { runtimeMode: 'api' });
+  completeInitialLoad({ caption: '我在。', tone: 'calm' });
+
+  const payload = beginChatSubmission('语音转写文本');
+
+  assert.equal(payload?.message, '语音转写文本');
+  assert.equal(payload?.draft, '');
+  assert.equal(getState().conversation.draft, '');
+});
+
 test('failed submission restores exact draft and discards unsafe error fields', () => {
   initializeState(viewModels(), { runtimeMode: 'api', initialDraft: '  原样草稿\n第二行  ' });
   completeInitialLoad({ caption: '我在。', tone: 'calm' });
