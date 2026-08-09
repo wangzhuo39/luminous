@@ -39,6 +39,34 @@ LUMINOUS_ANDROID_KEY_PASSWORD='...' \
 npm run android:build:release
 ```
 
+## LiveKit 实时语音通话
+
+实时通话只在 Android App 中开放。Capacitor 页面负责通话按钮、状态和转写展示；麦克风采集、远端音频播放、Audio Focus、蓝牙/有线耳机/扬声器路由、网络切换与重连由 LiveKit Android SDK 处理。`LiveKitCallService` 是独立的 `microphone` foreground service，并持有 `Room`；WebView 重建不会结束正在进行的通话，系统常驻通知可直接结束通话。主动来信使用的 `LuminousRealtimeService` 不参与语音媒体。
+
+服务端需要同时运行 Luminous API 与 Voice Agent。LiveKit 密钥只放在服务端：
+
+```dotenv
+LUMINOUS_LIVEKIT_URL=wss://your-project.livekit.cloud
+LUMINOUS_LIVEKIT_API_KEY=...
+LUMINOUS_LIVEKIT_API_SECRET=...
+LUMINOUS_LIVEKIT_AGENT_NAME=luminous-voice-agent
+
+LUMINOUS_STT_STREAM_URL=wss://stt-stream.example.com/v1/asr/stream
+LUMINOUS_STT_API_KEY=...
+LUMINOUS_STT_MODEL=qwen3-asr
+LUMINOUS_TTS_STREAM_URL=wss://tts.example.com/v1/tts/stream
+LUMINOUS_TTS_API_KEY=...
+LUMINOUS_TTS_MODEL=cosyvoice3
+LUMINOUS_TTS_VOICE=default
+```
+
+```bash
+uv run luminous-api --host 127.0.0.1 --port 8000 --deployment-mode public
+uv run luminous-livekit-agent start
+```
+
+App 先通过已认证的 `/api/voice/livekit/session` 获取 10 分钟、仅限指定房间和 microphone source 的 participant token，再由原生 SDK 直连 LiveKit；客户端不会获得 LiveKit API secret、STT/TTS 或 LLM 凭据。真机验收还需覆盖来电音量通道、蓝牙插拔、锁屏、切换 Wi-Fi/蜂窝网络、WebView/Activity 重建、静音和通知栏结束通话。
+
 ## 通知
 
 - 本地提醒：进入“隐私与边界”，点击“开启 Android 通知”。创建、延期、完成或取消提醒时会同步系统通知。

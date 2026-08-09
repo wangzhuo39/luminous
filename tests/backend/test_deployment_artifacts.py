@@ -19,16 +19,19 @@ class DeploymentArtifactsTest(unittest.TestCase):
     def test_systemd_units_keep_the_api_private_and_data_writable(self):
         api = (ROOT / "deploy/systemd/luminous-api.service").read_text()
         worker = (ROOT / "deploy/systemd/luminous-worker.service").read_text()
+        voice_agent = (ROOT / "deploy/systemd/luminous-livekit-agent.service").read_text()
         backup = (ROOT / "deploy/systemd/luminous-backup.service").read_text()
         timer = (ROOT / "deploy/systemd/luminous-backup.timer").read_text()
         self.assertIn("--host 127.0.0.1 --port 8000", api)
-        for unit in (api, worker, backup):
+        for unit in (api, worker, voice_agent, backup):
             self.assertIn("User=luminous", unit)
             self.assertIn("EnvironmentFile=/etc/luminous/luminous.env", unit)
             self.assertIn("NoNewPrivileges=true", unit)
             self.assertIn("ProtectSystem=strict", unit)
             self.assertIn("ReadWritePaths=/var/lib/luminous", unit)
         self.assertIn("OnUnitActiveSec=6h", timer)
+        self.assertIn("luminous-livekit-agent start", voice_agent)
+        self.assertIn("Requires=luminous-api.service", voice_agent)
 
     def test_tunnel_only_forwards_to_the_loopback_api(self):
         tunnel = (ROOT / "deploy/cloudflared/config.yml").read_text()
@@ -40,12 +43,17 @@ class DeploymentArtifactsTest(unittest.TestCase):
         unit_dir = ROOT / "deploy/systemd/user"
         api = (unit_dir / "luminous-api.service").read_text()
         worker = (unit_dir / "luminous-worker.service").read_text()
+        voice_agent = (unit_dir / "luminous-livekit-agent.service").read_text()
+        livekit_server = (unit_dir / "luminous-livekit-server.service").read_text()
         tunnel = (unit_dir / "luminous-cloudflared.service").read_text()
-        for unit in (api, worker, tunnel):
+        for unit in (api, worker, voice_agent, livekit_server, tunnel):
             self.assertIn("Restart=on-failure", unit)
             self.assertIn("WantedBy=default.target", unit)
             self.assertIn("NoNewPrivileges=true", unit)
         self.assertIn("--host 127.0.0.1 --port 8000", api)
+        self.assertIn("luminous-livekit-agent start", voice_agent)
+        self.assertIn("livekit-server --config", livekit_server)
+        self.assertIn("--key-file /home/wz/.config/luminous/livekit.keys", livekit_server)
         self.assertIn("--protocol http2", tunnel)
         self.assertIn("--token-file /home/wz/.cloudflared/luminous.token", tunnel)
         self.assertNotIn("--token ", tunnel)
@@ -75,6 +83,15 @@ class DeploymentArtifactsTest(unittest.TestCase):
         self.assertNotIn("keyPassword '", gradle)
         self.assertIn("apksigner", release_script)
         self.assertIn("LUMINOUS_ANDROID_KEYSTORE", release_script)
+
+    def test_wsl_livekit_firewall_is_port_scoped(self):
+        script = (ROOT / "scripts/deploy/configure-livekit-wsl-firewall.ps1").read_text()
+        self.assertIn("#Requires -RunAsAdministrator", script)
+        self.assertIn("-LocalPorts 7880, 7881", script)
+        self.assertIn("-LocalPorts 7882", script)
+        self.assertIn("-Protocol TCP", script)
+        self.assertIn("-Protocol UDP", script)
+        self.assertNotIn("DefaultInboundAction Allow", script)
 
 
 if __name__ == "__main__":

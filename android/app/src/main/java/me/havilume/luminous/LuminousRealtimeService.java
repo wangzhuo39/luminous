@@ -287,7 +287,11 @@ public final class LuminousRealtimeService extends Service {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .build();
-        NotificationManagerCompat.from(this).notify(stableId(messageId), notification);
+        try {
+            NotificationManagerCompat.from(this).notify(stableId(messageId), notification);
+        } catch (SecurityException ignored) {
+            // Notification permission can be revoked between the explicit check and delivery.
+        }
     }
 
     private boolean alreadySeen(String messageId) {

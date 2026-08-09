@@ -9,6 +9,7 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(RealtimeCompanionPlugin.class);
         registerPlugin(VoiceRecorderPlugin.class);
+        registerPlugin(LiveKitCallPlugin.class);
         super.onCreate(savedInstanceState);
         LuminousNotificationJobService.schedule(this);
     }

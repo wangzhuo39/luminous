@@ -76,10 +76,10 @@ const androidBundleRequirements = [
   ]],
   ['js/services/silent-spaces-api.js', ['/api/settings/companion', 'saveCompanionSettings']],
   ['js/features/silent-spaces/silent-spaces-controller.js', ['activate', 'saveCompanionSettings']],
-  ['native-runtime.js', ['responseType:"arraybuffer"', 'synthesizeVoice', 'VoiceRecorder', 'startMessage', 'startStream']],
+  ['native-runtime.js', ['responseType:"arraybuffer"', 'synthesizeVoice', 'VoiceRecorder', 'LiveKitCall', 'connectCall']],
   ['js/services/voice-api.js', ['base64AudioBlob', 'synthesizeVoice']],
   ['js/features/voice/voice-recorder.js', ['nativeVoiceRecorder', 'startMessage']],
-  ['js/features/voice/voice-call.js', ['addCallListener', 'addVadListener', 'connectCall', 'setCallAudioEnabled', 'startStream', 'stopStream']],
+  ['js/features/voice/voice-call.js', ['addCallListener', 'connectCall', 'createSession']],
 ];
 
 for (const [relativePath, requiredText] of androidBundleRequirements) {

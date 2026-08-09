@@ -19,7 +19,6 @@ from luminous.runtime.domain.time import parse_iso_datetime
 from luminous.runtime.infrastructure.client import ModelClientError
 from luminous.runtime.infrastructure.auth import LoginRateLimited, SessionAuth
 from luminous.runtime.infrastructure.realtime import serve_outbox_websocket, websocket_upgrade_requested
-from luminous.runtime.infrastructure.voice_realtime import serve_voice_realtime_websocket
 
 
 LOGGER = logging.getLogger(__name__)
@@ -115,17 +114,22 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
                     raise ValueError("since must be an epoch millisecond value") from exc
                 serve_outbox_websocket(self, self.service, since_ms=since_ms)
                 return
-            if path == "/api/voice/realtime":
-                if not websocket_upgrade_requested(self.headers):
-                    self._send_error(HTTPStatus.UPGRADE_REQUIRED, "websocket_upgrade_required", "websocket upgrade is required")
-                    return
-                try:
-                    serve_voice_realtime_websocket(self, self.service, self.config)
-                except ValueError as exc:
-                    self._send_error(HTTPStatus.SERVICE_UNAVAILABLE, "voice_realtime_unavailable", str(exc))
-                return
             if path in INTERNAL_HTTP_ENDPOINTS:
                 self._send_error(HTTPStatus.NOT_FOUND, "not_found", "not found")
+                return
+            if path.startswith("/api/voice/livekit/session/"):
+                session_id, action = self._resource_action(path, "/api/voice/livekit/session/")
+                if action:
+                    self._send_error(HTTPStatus.NOT_FOUND, "not_found", "not found")
+                    return
+                session = self.service.read_livekit_voice_session(
+                    session_id,
+                    session_digest=self.auth.session_digest(self.headers.get("Cookie", "")),
+                )
+                if session is None:
+                    self._send_error(HTTPStatus.NOT_FOUND, "voice_session_not_found", "voice session not found")
+                    return
+                self._send_json(HTTPStatus.OK, session)
                 return
             if path == "/api/state":
                 params = self._query_params(parsed.query)
@@ -284,6 +288,52 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
                 {"authenticated": False},
                 response_headers={"Set-Cookie": self.auth.cookie_header("", clear=True)},
             )
+            return
+        if path == "/api/voice/livekit/session":
+            try:
+                payload = self._read_json_body(max_bytes=8 * 1024)
+                client = payload.get("client", "android")
+                if client != "android":
+                    raise ValueError("realtime voice is available only to the Android client")
+                connection = self.service.create_livekit_voice_session(
+                    session_digest=self.auth.session_digest(self.headers.get("Cookie", "")),
+                    client=client,
+                )
+            except ValueError as exc:
+                self._send_error(HTTPStatus.SERVICE_UNAVAILABLE, "livekit_unavailable", str(exc))
+                return
+            self._send_json(HTTPStatus.CREATED, connection)
+            return
+        if path.startswith("/api/voice/livekit/session/"):
+            session_id, action = self._resource_action(path, "/api/voice/livekit/session/")
+            if action != "metrics":
+                self._send_error(HTTPStatus.NOT_FOUND, "not_found", "not found")
+                return
+            try:
+                payload = self._read_json_body(max_bytes=16 * 1024)
+                metrics = payload.get("metrics", {})
+                status = payload.get("status")
+                last_error = payload.get("last_error")
+                if not isinstance(metrics, dict):
+                    raise ValueError("metrics must be a JSON object")
+                if status is not None and not isinstance(status, str):
+                    raise ValueError("status must be a string")
+                if last_error is not None and not isinstance(last_error, str):
+                    raise ValueError("last_error must be a string")
+                session = self.service.update_livekit_voice_session(
+                    session_id,
+                    session_digest=self.auth.session_digest(self.headers.get("Cookie", "")),
+                    status=status,
+                    metrics=metrics,
+                    last_error=last_error,
+                )
+            except ValueError as exc:
+                self._send_error(HTTPStatus.BAD_REQUEST, "invalid_request", str(exc))
+                return
+            if session is None:
+                self._send_error(HTTPStatus.NOT_FOUND, "voice_session_not_found", "voice session not found")
+                return
+            self._send_json(HTTPStatus.OK, session)
             return
         if path != "/api/voice/speech" and not self._begin_idempotency("POST", path):
             return
@@ -654,6 +704,20 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
         if not self._authorize(path):
             return
         if not self._begin_idempotency("DELETE", path):
+            return
+        if path.startswith("/api/voice/livekit/session/"):
+            session_id, action = self._resource_action(path, "/api/voice/livekit/session/")
+            if action:
+                self._send_error(HTTPStatus.NOT_FOUND, "not_found", "not found")
+                return
+            session = self.service.end_livekit_voice_session(
+                session_id,
+                session_digest=self.auth.session_digest(self.headers.get("Cookie", "")),
+            )
+            if session is None:
+                self._send_error(HTTPStatus.NOT_FOUND, "voice_session_not_found", "voice session not found")
+                return
+            self._send_json(HTTPStatus.OK, session)
             return
         if path.startswith("/api/notification-devices/"):
             device_id, action = self._resource_action(path, "/api/notification-devices/")

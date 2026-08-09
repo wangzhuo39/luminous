@@ -7,6 +7,7 @@ const ACTIVE_REMINDER_STATUSES = new Set(['scheduled', 'due', 'snoozed']);
 const listeners = [];
 const RealtimeCompanion = registerPlugin('RealtimeCompanion');
 const VoiceRecorder = registerPlugin('VoiceRecorder');
+const LiveKitCall = registerPlugin('LiveKitCall');
 
 window.__LUMINOUS_NATIVE__ = Capacitor.isNativePlatform();
 window.__LUMINOUS_API_BASE__ = window.__LUMINOUS_NATIVE__ ? API_BASE : '';
@@ -102,14 +103,15 @@ const voice = Object.freeze({
   stopMessage: () => VoiceRecorder.stop({ mode: 'message' }),
   transcribeMessage: () => VoiceRecorder.transcribeMessage(),
   discardMessage: () => VoiceRecorder.discardMessage(),
-  startStream: () => VoiceRecorder.start({ mode: 'stream' }),
-  stopStream: () => VoiceRecorder.stop({ mode: 'stream' }),
-  connectCall: () => VoiceRecorder.connectCall(),
-  sendCallEvent: (event) => VoiceRecorder.sendCallEvent({ event }),
-  closeCall: () => VoiceRecorder.closeCall(),
-  setCallAudioEnabled: (enabled) => VoiceRecorder.setCallAudioEnabled({ enabled }),
-  addCallListener: (listener) => VoiceRecorder.addListener('call', listener),
-  addVadListener: (listener) => VoiceRecorder.addListener('vad', listener),
+  connectCall: (connection) => LiveKitCall.connect(connection),
+  closeCall: () => LiveKitCall.disconnect(),
+  getCallState: () => LiveKitCall.getState(),
+  setCallAudioEnabled: (enabled) => LiveKitCall.setMicrophoneEnabled({ enabled }),
+  getCallAudioDevices: () => LiveKitCall.getAudioDevices(),
+  selectCallAudioDevice: (deviceId) => LiveKitCall.selectAudioDevice({ deviceId }),
+  addCallListener: (listener) => LiveKitCall.addListener('state', listener),
+  addTranscriptionListener: (listener) => LiveKitCall.addListener('transcription', listener),
+  addAudioDevicesListener: (listener) => LiveKitCall.addListener('audioDevices', listener),
 });
 
 function reminderSchedule(reminder, at) {

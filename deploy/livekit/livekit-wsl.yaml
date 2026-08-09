@@ -1,0 +1,15 @@
+# Single-node LiveKit media plane for the Luminous WSL deployment.
+# Secrets are loaded separately from ~/.config/luminous/livekit.keys.
+port: 7880
+
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  use_external_ip: false
+
+room:
+  auto_create: true
+
+logging:
+  level: info
+  json: true

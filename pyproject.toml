@@ -6,13 +6,21 @@ build-backend = "setuptools.build_meta"
 name = "luminous"
 version = "0.1.0"
 requires-python = ">=3.11"
-dependencies = ["google-auth[requests]>=2.40", "tqdm>=4.66", "websocket-client>=1.8"]
+dependencies = [
+    "google-auth[requests]>=2.40",
+    "livekit-agents>=1.6.9",
+    "livekit-api>=1.2.0",
+    "livekit-plugins-silero>=1.6.9",
+    "tqdm>=4.66",
+    "websockets>=15.0",
+]
 
 [project.scripts]
 luminous-api = "luminous.runtime.infrastructure.http:main"
 luminous-worker = "luminous.runtime.worker:main"
 luminous-backup = "luminous.runtime.infrastructure.backup:main"
 luminous-training = "luminous.training.pipeline.cli:main"
+luminous-livekit-agent = "luminous.runtime.infrastructure.livekit_agent:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]

@@ -48,6 +48,7 @@ class BackendConfig:
     stt_api_key: str = ""
     stt_model: str = ""
     stt_stream_url: str = ""
+    stt_stream_api_key: str = ""
     tts_provider: str = ""
     tts_base_url: str = ""
     tts_api_key: str = ""
@@ -56,10 +57,20 @@ class BackendConfig:
     tts_voice: str = "alloy"
     tts_instruct_text: str = DEFAULT_TTS_INSTRUCT_TEXT
     voice_timeout_seconds: int = 60
+    livekit_url: str = ""
+    livekit_public_url: str = ""
+    tts_stream_api_key: str = ""
+    livekit_api_key: str = ""
+    livekit_api_secret: str = ""
+    livekit_agent_name: str = "luminous-voice-agent"
 
     @property
     def llm_configured(self) -> bool:
         return bool(self.base_url and self.api_key and self.model)
+
+    @property
+    def livekit_configured(self) -> bool:
+        return bool(self.livekit_url and self.livekit_api_key and self.livekit_api_secret)
 
     @property
     def notification_configured(self) -> bool:
@@ -189,6 +200,7 @@ def load_backend_config(
         stt_api_key=value("LUMINOUS_STT_API_KEY"),
         stt_model=value("LUMINOUS_STT_MODEL", default="SenseVoiceSmall").strip(),
         stt_stream_url=value("LUMINOUS_STT_STREAM_URL").rstrip("/"),
+        stt_stream_api_key=value("LUMINOUS_STT_STREAM_API_KEY", "LUMINOUS_STT_API_KEY"),
         tts_provider=value("LUMINOUS_TTS_PROVIDER", default="openai-compatible").strip(),
         tts_base_url=value("LUMINOUS_TTS_BASE_URL").rstrip("/"),
         tts_api_key=value("LUMINOUS_TTS_API_KEY"),
@@ -197,6 +209,12 @@ def load_backend_config(
         tts_voice=value("LUMINOUS_TTS_VOICE", default="alloy").strip(),
         tts_instruct_text=value("LUMINOUS_TTS_INSTRUCT_TEXT", default=DEFAULT_TTS_INSTRUCT_TEXT).strip(),
         voice_timeout_seconds=int(value("LUMINOUS_VOICE_TIMEOUT", default="60")),
+        tts_stream_api_key=value("LUMINOUS_TTS_STREAM_API_KEY", "LUMINOUS_TTS_API_KEY"),
+        livekit_url=value("LUMINOUS_LIVEKIT_URL").rstrip("/"),
+        livekit_public_url=value("LUMINOUS_LIVEKIT_PUBLIC_URL").rstrip("/"),
+        livekit_api_key=value("LUMINOUS_LIVEKIT_API_KEY"),
+        livekit_api_secret=value("LUMINOUS_LIVEKIT_API_SECRET"),
+        livekit_agent_name=value("LUMINOUS_LIVEKIT_AGENT_NAME", default="luminous-voice-agent").strip(),
     )
 
 

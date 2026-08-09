@@ -191,7 +191,11 @@ public final class LuminousNotificationJobService extends JobService {
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE);
-        NotificationManagerCompat.from(this).notify(stableId(messageId), notification.build());
+        try {
+            NotificationManagerCompat.from(this).notify(stableId(messageId), notification.build());
+        } catch (SecurityException ignored) {
+            // Notification permission can be revoked between the explicit check and delivery.
+        }
     }
 
     private void createChannel() {

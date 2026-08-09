@@ -66,9 +66,10 @@ mv -Tf /opt/luminous/.current-next "$current_link"
 install -o root -g root -m 0644 "$release_dir"/deploy/systemd/luminous-*.service /etc/systemd/system/
 install -o root -g root -m 0644 "$release_dir/deploy/systemd/luminous-backup.timer" /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable luminous-api.service luminous-worker.service luminous-backup.timer
+systemctl enable luminous-api.service luminous-worker.service luminous-livekit-agent.service luminous-backup.timer
 systemctl restart luminous-api.service
 systemctl restart luminous-worker.service
+systemctl restart luminous-livekit-agent.service
 systemctl start luminous-backup.timer
 
 if ! "$current_link/scripts/deploy/smoke-test.sh"; then
@@ -76,7 +77,7 @@ if ! "$current_link/scripts/deploy/smoke-test.sh"; then
   if [[ -L "$previous_link" ]]; then
     ln -sfn "$(readlink -f "$previous_link")" /opt/luminous/.current-rollback
     mv -Tf /opt/luminous/.current-rollback "$current_link"
-    systemctl restart luminous-api.service luminous-worker.service
+    systemctl restart luminous-api.service luminous-worker.service luminous-livekit-agent.service
   fi
   exit 1
 fi

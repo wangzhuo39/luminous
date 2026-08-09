@@ -277,6 +277,114 @@ class CompanionRuntimeStore:
             payloads = payloads[-limit:]
         return payloads
 
+    def create_voice_session(
+        self,
+        *,
+        session_id: str,
+        session_digest: str,
+        room_name: str,
+        participant_identity: str,
+        client: str,
+    ) -> dict[str, Any]:
+        timestamp = utc_now_iso()
+        self._execute(
+            """
+            INSERT INTO voice_sessions (
+                session_id, session_digest, room_name, participant_identity, client,
+                status, created_at, updated_at, connected_at, ended_at,
+                last_error, metrics_json
+            ) VALUES (?, ?, ?, ?, ?, 'created', ?, ?, '', '', '', '{}')
+            """,
+            (
+                session_id,
+                session_digest,
+                room_name,
+                participant_identity,
+                client,
+                timestamp,
+                timestamp,
+            ),
+        )
+        return self.read_voice_session(session_id) or {}
+
+    def read_voice_session(
+        self,
+        session_id: str,
+        *,
+        session_digest: str = "",
+    ) -> dict[str, Any] | None:
+        row = self._fetch_one("SELECT * FROM voice_sessions WHERE session_id = ?", (session_id,))
+        if row is None:
+            return None
+        payload = dict(row)
+        if session_digest and payload.get("session_digest") != session_digest:
+            return None
+        try:
+            payload["metrics"] = json.loads(str(payload.pop("metrics_json", "{}")))
+        except json.JSONDecodeError:
+            payload["metrics"] = {}
+        return payload
+
+    def update_voice_session(
+        self,
+        session_id: str,
+        *,
+        session_digest: str = "",
+        status: str | None = None,
+        metrics: dict[str, Any] | None = None,
+        last_error: str | None = None,
+    ) -> dict[str, Any] | None:
+        allowed_statuses = {"created", "connecting", "connected", "reconnecting", "ended", "failed"}
+        if status is not None and status not in allowed_statuses:
+            raise ValueError("invalid voice session status")
+        current = self.read_voice_session(session_id, session_digest=session_digest)
+        if current is None:
+            return None
+        current_status = str(current.get("status", "created"))
+        allowed_transitions = {
+            "created": {"connecting", "connected", "reconnecting", "ended", "failed"},
+            "connecting": {"connected", "reconnecting", "ended", "failed"},
+            "connected": {"reconnecting", "ended", "failed"},
+            "reconnecting": {"connected", "ended", "failed"},
+            "failed": {"ended"},
+            "ended": set(),
+        }
+        if (
+            status is not None
+            and status != current_status
+            and status not in allowed_transitions.get(current_status, set())
+        ):
+            status = None
+        merged_metrics = dict(current.get("metrics", {}))
+        if metrics:
+            merged_metrics.update(metrics)
+        timestamp = utc_now_iso()
+        next_status = status or current_status
+        connected_at = str(current.get("connected_at", ""))
+        ended_at = str(current.get("ended_at", ""))
+        if next_status == "connected" and not connected_at:
+            connected_at = timestamp
+        if next_status in {"ended", "failed"} and not ended_at:
+            ended_at = timestamp
+        self._execute(
+            """
+            UPDATE voice_sessions
+            SET status = ?, updated_at = ?, connected_at = ?, ended_at = ?,
+                last_error = ?, metrics_json = ?
+            WHERE session_id = ?
+            """,
+            (
+                next_status,
+                timestamp,
+                connected_at,
+                ended_at,
+                str(current.get("last_error", "")) if last_error is None else last_error[:1000],
+                json.dumps(merged_metrics, ensure_ascii=False, separators=(",", ":")),
+                session_id,
+            ),
+        )
+        return self.read_voice_session(session_id, session_digest=session_digest)
+
     def append_outbox(self, payload: dict[str, Any]) -> str:
         message_id = str(payload.get("message_id") or payload.get("id") or payload.get("signal_id") or "")
         if not message_id:
@@ -2840,6 +2948,28 @@ class CompanionRuntimeStore:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS notification_devices_session_idx "
                 "ON notification_devices(session_digest, status)"
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS voice_sessions (
+                    session_id TEXT PRIMARY KEY,
+                    session_digest TEXT NOT NULL DEFAULT '',
+                    room_name TEXT NOT NULL UNIQUE,
+                    participant_identity TEXT NOT NULL,
+                    client TEXT NOT NULL DEFAULT 'android',
+                    status TEXT NOT NULL DEFAULT 'created',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    connected_at TEXT NOT NULL DEFAULT '',
+                    ended_at TEXT NOT NULL DEFAULT '',
+                    last_error TEXT NOT NULL DEFAULT '',
+                    metrics_json TEXT NOT NULL DEFAULT '{}'
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS voice_sessions_owner_status_idx "
+                "ON voice_sessions(session_digest, status, updated_at)"
             )
             self._fts_enabled = self._ensure_fts(conn)
             conn.commit()

@@ -1,5 +1,7 @@
 # Luminous 语音能力拓展调研与实施建议
 
+> **历史调研说明（2026-08-09）：** 文中的 `/api/voice/realtime` PCM WebSocket 是当时的阶段性建议，现已由 Android 原生 LiveKit + 独立 Voice Agent 路径取代。当前实现以 `docs/architecture/VOICE_REALTIME_ANDROID_STATUS.md` 为准。
+
 日期：2026-08-05
 
 ## 0. 调研边界

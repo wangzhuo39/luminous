@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+from luminous.runtime.application.livekit_service import LiveKitService
 from luminous.runtime.application.runtime import CompanionRuntime
 from luminous.runtime.application.voice_service import VoiceService
 from luminous.runtime.config import BackendConfig
@@ -46,9 +47,20 @@ class CompanionService:
         self.config = config
         self.runtime = CompanionRuntime(config, client=client, store=store, clock=clock)
         self.voice = voice_service or VoiceService(config)
+        self.livekit = LiveKitService(config, self.runtime.store)
 
     def chat(self, user_text: str, history: Sequence[dict[str, object]] | None = None) -> dict[str, object]:
         return public_chat(self.runtime.chat(user_text, history))
+
+    def recent_chat_context(self, limit: int = 12) -> list[dict[str, object]]:
+        """Return persisted text/voice turns in the same shape used by normal chat."""
+        history: list[dict[str, object]] = []
+        for item in self.runtime.store.read_raw_messages(limit=limit):
+            role = str(item.get("role", ""))
+            content = str(item.get("content", "")).strip()
+            if role in {"user", "assistant"} and content:
+                history.append({"role": role, "content": content})
+        return history
 
     def read_chat_history(self, limit: int = 10) -> dict[str, object]:
         items = self.runtime.store.read_raw_messages(limit=limit)
@@ -162,6 +174,36 @@ class CompanionService:
             voice_id=voice_id or str(settings["voice_id"]),
             speaking_rate=float(speaking_rate if speaking_rate is not None else settings["speaking_rate"]),
         )
+
+    def create_livekit_voice_session(self, *, session_digest: str, client: str = "web") -> dict[str, str]:
+        return self.livekit.create_connection(session_digest=session_digest, client=client).to_dict()
+
+    def read_livekit_voice_session(
+        self, session_id: str, *, session_digest: str = "",
+    ) -> dict[str, object] | None:
+        return self.livekit.read_session(session_id, session_digest=session_digest)
+
+    def update_livekit_voice_session(
+        self,
+        session_id: str,
+        *,
+        session_digest: str = "",
+        status: str | None = None,
+        metrics: dict[str, Any] | None = None,
+        last_error: str | None = None,
+    ) -> dict[str, object] | None:
+        return self.livekit.update_session(
+            session_id,
+            session_digest=session_digest,
+            status=status,
+            metrics=metrics,
+            last_error=last_error,
+        )
+
+    def end_livekit_voice_session(
+        self, session_id: str, *, session_digest: str = "",
+    ) -> dict[str, object] | None:
+        return self.livekit.end_session(session_id, session_digest=session_digest)
 
     def register_notification_device(
         self, payload: dict[str, Any], *, session_digest: str = "",

@@ -1,135 +1,141 @@
-const BARGE_IN_DELAY_MS = 450;
+import { requestJson } from '../../services/api-client.js';
 
-function pcmBuffer(base64) {
-  const raw = globalThis.atob(base64 || '');
-  const bytes = new Uint8Array(raw.length);
-  for (let index = 0; index < raw.length; index += 1) bytes[index] = raw.charCodeAt(index);
-  return bytes.buffer;
-}
-
-function nativeVoice(dependencies) {
-  if (dependencies.nativeVoice !== undefined) return dependencies.nativeVoice;
-  if (typeof window === 'undefined' || window.__LUMINOUS_NATIVE__ !== true) return null;
-  return window.LuminousNative?.voice ?? null;
-}
-
-export function initVoiceCall(button, { enabled = true, announce = () => {}, onTurn = () => {}, dependencies = {} } = {}) {
-  const AudioContextImpl = dependencies.AudioContext ?? globalThis.AudioContext ?? globalThis.webkitAudioContext;
-  const recorder = nativeVoice(dependencies);
+export function initVoiceCall(button, {
+  enabled = true,
+  announce = () => {},
+  onTurn = () => {},
+  dependencies = {},
+} = {}) {
   const progress = button?.parentElement?.querySelector?.('[data-hook="voice-call-progress"]') ?? null;
   const progressText = progress?.querySelector?.('[data-hook="voice-call-progress-text"]') ?? null;
-  let context = null; let callListener = null; let vadListener = null; let bargeTimer = null;
-  let speechActive = false; let turnEndedBeforeReady = false; let activeTranscript = ''; let activeReply = ''; let nextPlaybackAt = 0;
-  const playback = new Set();
+  const nativeVoice = dependencies.nativeVoice
+    ?? (typeof window !== 'undefined' && window.__LUMINOUS_NATIVE__ ? window.LuminousNative?.voice : null);
+  const createSession = dependencies.createSession
+    ?? (() => requestJson('/api/voice/livekit/session', { method: 'POST', body: { client: 'android' } }));
+  const endSession = dependencies.endSession
+    ?? ((sessionId) => requestJson(`/api/voice/livekit/session/${encodeURIComponent(sessionId)}`, {
+      method: 'DELETE',
+    }));
+
   let state = 'idle';
+  let closing = false;
+  let stateListener = null;
+  let transcriptionListener = null;
+  let audioDevicesListener = null;
+  let userTranscript = '';
+  let assistantTranscript = '';
+  let callSessionId = '';
 
   const setState = (next, message = '', { showProgress = next !== 'idle' } = {}) => {
     state = next;
-    button.dataset.state = next;
-    button.dataset.active = String(next !== 'idle');
-    button.disabled = !enabled || next === 'connecting';
-    const labels = { idle: '开始实时通话', connecting: '正在连接实时通话', listening: '正在聆听', thinking: '正在回应', speaking: '结束实时通话', ready: '结束实时通话' };
-    button.setAttribute('aria-label', labels[next] || labels.idle); button.title = labels[next] || labels.idle;
-    if (progress) {
-      progress.dataset.state = next;
-      progress.hidden = !showProgress;
+    if (button) {
+      button.dataset.state = next;
+      button.dataset.active = String(next !== 'idle');
+      button.disabled = !enabled || next === 'connecting';
+      const label = next === 'idle' ? '开始实时通话' : next === 'connecting' ? '正在连接实时通话' : '结束实时通话';
+      button.setAttribute('aria-label', label);
+      button.title = label;
     }
+    if (progress) progress.hidden = !showProgress;
     if (progressText) progressText.textContent = message;
     if (message) announce(message);
   };
-  const clearBargeTimer = () => { if (bargeTimer) clearTimeout(bargeTimer); bargeTimer = null; };
-  const stopPlayback = () => {
-    for (const node of playback) { try { node.stop(); } catch {} }
-    playback.clear(); nextPlaybackAt = 0;
+
+  const clearListeners = () => {
+    stateListener?.remove?.();
+    transcriptionListener?.remove?.();
+    audioDevicesListener?.remove?.();
+    stateListener = null;
+    transcriptionListener = null;
+    audioDevicesListener = null;
   };
-  const close = ({ message = '', showProgress = false } = {}) => {
-    clearBargeTimer(); stopPlayback(); speechActive = false;
-    recorder?.stopStream?.().catch(() => {});
-    recorder?.sendCallEvent?.(JSON.stringify({ type: 'call.end' })).catch(() => {});
-    recorder?.closeCall?.().catch(() => {});
-    callListener?.remove?.(); callListener = null; vadListener?.remove?.(); vadListener = null;
-    context?.close?.(); context = null; turnEndedBeforeReady = false; activeTranscript = ''; activeReply = '';
-    setState('idle', message, { showProgress });
+
+  const close = async ({ message = '实时通话已结束。', notifyNative = true } = {}) => {
+    if (closing) return;
+    closing = true;
+    const endingSessionId = callSessionId;
+    if (notifyNative) await nativeVoice?.closeCall?.().catch(() => {});
+    if (endingSessionId) await endSession(endingSessionId).catch(() => {});
+    clearListeners();
+    userTranscript = '';
+    assistantTranscript = '';
+    callSessionId = '';
+    setState('idle', message, { showProgress: Boolean(message) });
+    closing = false;
   };
-  const playPcm = (base64) => {
-    if (!context || state === 'idle') return;
-    const pcm = new Int16Array(pcmBuffer(base64)); const audio = context.createBuffer(1, pcm.length, 24_000); const data = audio.getChannelData(0);
-    for (let index = 0; index < pcm.length; index += 1) data[index] = pcm[index] / 0x8000;
-    const node = context.createBufferSource(); node.buffer = audio; node.connect(context.destination); playback.add(node);
-    node.addEventListener('ended', () => playback.delete(node), { once: true });
-    nextPlaybackAt = Math.max(nextPlaybackAt, context.currentTime); node.start(nextPlaybackAt); nextPlaybackAt += audio.duration;
+
+  const handleNativeState = ({ status, message = '', muted = false, callSessionId: nativeSessionId = '' } = {}) => {
+    if (nativeSessionId) callSessionId = nativeSessionId;
+    if (status === 'connected') setState('connected', muted ? '麦克风已静音。' : '实时通话已连接，正在聆听。');
+    else if (status === 'reconnecting') setState('reconnecting', '网络切换，正在恢复通话…');
+    else if (status === 'connecting') setState('connecting', '正在建立安全语音房间…');
+    else if (status === 'failed') void close({ message: message || '实时通话连接失败，请重试。', notifyNative: false });
+    else if (status === 'disconnected' && state !== 'idle') void close({ message: '实时通话已断开。', notifyNative: false });
   };
-  const beginTurn = async ({ interrupt = false } = {}) => {
-    if (!recorder || state === 'connecting' || state === 'listening' || state === 'thinking') return;
-    clearBargeTimer(); turnEndedBeforeReady = false; activeTranscript = ''; activeReply = '';
-    setState('connecting', interrupt ? '已打断，正在重新听你说。' : '正在准备识别…');
-    if (interrupt) {
-      stopPlayback();
-      await recorder.sendCallEvent(JSON.stringify({ type: 'response.cancel' })).catch(() => {});
+
+  const handleTranscription = ({
+    text = '', final = false, participantIdentity = '', assistant = false,
+  } = {}) => {
+    const clean = String(text).trim();
+    if (!clean) return;
+    const isAssistant = assistant === true || participantIdentity.includes('agent');
+    if (isAssistant) assistantTranscript = clean;
+    else userTranscript = clean;
+    setState('connected', isAssistant ? `叶筝：${clean.slice(0, 36)}` : `你：${clean.slice(0, 36)}`);
+    if (isAssistant && final && userTranscript) {
+      onTurn(userTranscript, assistantTranscript);
+      userTranscript = '';
+      assistantTranscript = '';
     }
-    await recorder.setCallAudioEnabled(false);
-    await recorder.sendCallEvent(JSON.stringify({ type: 'turn.start' }));
   };
-  const finishTurn = async () => {
-    if (state !== 'listening') return;
-    await recorder.setCallAudioEnabled(false);
-    await recorder.sendCallEvent(JSON.stringify({ type: 'turn.end' }));
-    setState('thinking', '你说完了，正在识别与思考…');
+
+  const ensureListeners = async () => {
+    if (!stateListener) {
+      stateListener = await nativeVoice.addCallListener(handleNativeState);
+    }
+    if (!transcriptionListener && nativeVoice.addTranscriptionListener) {
+      transcriptionListener = await nativeVoice.addTranscriptionListener(handleTranscription);
+    }
+    if (!audioDevicesListener && nativeVoice.addAudioDevicesListener) {
+      audioDevicesListener = await nativeVoice.addAudioDevicesListener(() => {});
+    }
   };
-  const handleVad = ({ type }) => {
-    if (type === 'speech_start') {
-      speechActive = true;
-      if (state === 'ready') void beginTurn();
-      else if (state === 'speaking' || state === 'thinking') {
-        clearBargeTimer();
-        bargeTimer = setTimeout(() => { if (speechActive && (state === 'speaking' || state === 'thinking')) void beginTurn({ interrupt: true }); }, BARGE_IN_DELAY_MS);
-      }
+
+  const connect = async () => {
+    if (!enabled || !nativeVoice?.connectCall || !nativeVoice?.addCallListener) {
+      setState('idle', '实时通话仅支持 Luminous Android 应用。', { showProgress: true });
       return;
     }
-    if (type === 'speech_end') {
-      speechActive = false; clearBargeTimer();
-      if (state === 'listening') void finishTurn();
-      else if (state === 'connecting') turnEndedBeforeReady = true;
-    }
-  };
-  const handleCallEvent = ({ kind, data }) => {
-    if (kind === 'binary') { playPcm(data); return; }
-    if (kind === 'error') { if (state !== 'idle') close({ message: data || '实时语音连接失败，请重试。', showProgress: true }); return; }
-    if (kind === 'closed') { if (state !== 'idle') close({ message: '通话已断开，点击图标重试。', showProgress: true }); return; }
-    if (kind !== 'text') return;
-    let event; try { event = JSON.parse(data); } catch { return; }
-    if (event.type === 'call.ready') {
-      recorder.startStream().then(() => setState('ready', '已连接，正在等待你说话。'))
-        .catch(() => close({ message: '无法启动麦克风，请检查权限。', showProgress: true }));
-    }
-    else if (event.type === 'turn.ready') recorder.setCallAudioEnabled(true).then(() => {
-      setState('listening', '正在听你说。');
-      if (turnEndedBeforeReady) {
-        turnEndedBeforeReady = false;
-        void finishTurn();
-      }
-    });
-    else if (event.type === 'transcript.partial') {
-      const text = String(event.text || '').trim();
-      setState('listening', text ? `正在识别：${text.slice(0, 36)}` : '正在识别你说的话…');
-    }
-    else if (event.type === 'transcript.final') { activeTranscript = event.text || ''; setState('thinking', '已听到，正在思考怎么回答。'); }
-    else if (event.type === 'response.text') { activeReply = event.text || ''; setState('thinking', '叶筝正在组织回答…'); }
-    else if (event.type === 'response.audio.start') setState('speaking', '叶筝正在回答，你可以随时插话。');
-    else if (event.type === 'response.done') { onTurn(activeTranscript, activeReply); setState('ready', '回答结束，正在等待你继续说话。'); }
-    else if (event.type === 'error') setState('ready', event.message || '实时语音暂时不可用。');
-  };
-  const connect = async () => {
-    if (!enabled || !AudioContextImpl || !recorder?.connectCall || !recorder?.addCallListener || !recorder?.addVadListener) { setState('idle', '实时语音仅支持 Luminous Android 应用。', { showProgress: true }); return; }
-    setState('connecting', '正在连接实时通话…');
+    setState('connecting', '正在建立安全语音房间…');
     try {
-      context = new AudioContextImpl(); await context.resume?.();
-      callListener = await recorder.addCallListener(handleCallEvent);
-      vadListener = await recorder.addVadListener(handleVad);
-      await recorder.connectCall();
-    } catch (error) { close({ message: '无法开始实时语音，请重试。', showProgress: true }); }
+      await ensureListeners();
+      const connection = await createSession();
+      callSessionId = String(connection.callSessionId || '');
+      await nativeVoice.connectCall(connection);
+    } catch (error) {
+      await close({ message: '无法开始实时通话，请重试。' });
+    }
   };
-  const click = () => { if (state === 'idle') void connect(); else close({ message: '实时通话已结束。', showProgress: true }); };
-  button?.addEventListener('click', click); setState('idle');
-  return Object.freeze({ setEnabled(value) { enabled = value !== false; if (!enabled) close(); else setState(state); }, destroy() { close(); button?.removeEventListener('click', click); } });
+
+  const click = () => { if (state === 'idle') void connect(); else void close(); };
+  button?.addEventListener('click', click);
+  setState('idle');
+  if (nativeVoice?.addCallListener && nativeVoice?.getCallState) {
+    void ensureListeners()
+      .then(() => nativeVoice.getCallState())
+      .then(handleNativeState)
+      .catch(() => {});
+  }
+
+  return Object.freeze({
+    setEnabled(value) {
+      enabled = value !== false;
+      if (!enabled) void close({ message: '' });
+      else setState(state);
+    },
+    destroy() {
+      clearListeners();
+      button?.removeEventListener('click', click);
+    },
+  });
 }

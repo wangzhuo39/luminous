@@ -25,8 +25,8 @@ API_KEY           = ${API_KEY}
 ### API Key 规则
 
 - 语音消息 ASR：HTTP Header `Authorization: Bearer API_KEY`。
-- 实时 ASR：首个 WebSocket `start` JSON 中的 `api_key` 字段。
-- 实时 TTS：首个 WebSocket `start` JSON 中的 `api_key` 字段。
+- 实时 ASR/TTS v2：优先使用 WebSocket 握手 Header `Authorization: Bearer API_KEY`。
+- 旧调用端仍可在首个 `start` JSON 中发送 `api_key`；这是兼容路径。
 - 当前服务端源码对 HTTP `/v1/tts` 和 `/v1/voices` 未强制检查 API Key；调用端仍建议通过 Cloudflare Access、网关策略或后续服务端改造保护这两个接口。
 
 ## 2. 语音消息 ASR
@@ -55,7 +55,7 @@ curl -X POST https://stt.havilume.me/v1/audio/transcriptions \
 
 ## 3. 实时通话 ASR
 
-适用于持续通话、边说边识别。每个 WebSocket 连接代表一个 utterance；发送 `end` 后服务端返回 `final` 并关闭连接。下一句话建立新连接。
+适用于持续通话、边说边识别。协议 v2 中一个 WebSocket 连接代表一次通话，可以顺序处理多个由 VAD 切分的 utterance。
 
 ### 音频格式
 
@@ -65,7 +65,7 @@ curl -X POST https://stt.havilume.me/v1/audio/transcriptions \
 编码：signed 16-bit little-endian PCM（s16le）
 ```
 
-建议每个 WebSocket 二进制帧携带 100-200 ms 音频，即 3,200-6,400 bytes。客户端可以发送任意帧大小，服务端默认累计约 2 秒后执行一次增量解码。
+建议每个 WebSocket 二进制帧携带 20-100 ms 音频。客户端可以发送任意偶数字节长度的 PCM 帧，服务端按 `chunk_size_sec` 执行增量解码。
 
 ### 客户端发送顺序
 
@@ -80,28 +80,40 @@ wss://stt-stream.havilume.me/v1/asr/stream
 ```json
 {
   "type": "start",
-  "api_key": "${API_KEY}",
+  "protocol_version": "2",
   "language": "Chinese",
   "context": "",
-  "chunk_size_sec": 2.0
+  "chunk_size_sec": 0.5,
+  "sample_rate": 16000,
+  "channels": 1,
+  "format": "s16le"
 }
 ```
 
-收到 `ready` 后持续发送 PCM 二进制帧。客户端 VAD 判断用户说完后发送：
+收到 `ready` 后，每句话先发送 `utterance_start`，再持续发送 PCM 二进制帧：
 
 ```json
-{"type": "end"}
+{"type":"utterance_start","utterance_id":"utt_001"}
+```
+
+客户端 VAD 判断用户说完后发送：
+
+```json
+{"type":"utterance_end","utterance_id":"utt_001"}
 ```
 
 ### 服务端消息
 
 ```json
-{"type":"ready","sample_rate":16000,"format":"s16le"}
-{"type":"partial","language":"Chinese","text":"你好"}
-{"type":"final","language":"Chinese","text":"你好，今天过得怎么样？"}
+{"type":"ready","protocol_version":"2","multi_utterance":true,"sample_rate":16000,"channels":1,"format":"s16le"}
+{"type":"utterance_ready","utterance_id":"utt_001"}
+{"type":"partial","utterance_id":"utt_001","revision":1,"language":"Chinese","text":"你好"}
+{"type":"final","utterance_id":"utt_001","revision":2,"language":"Chinese","text":"你好，今天过得怎么样？","audio_duration_ms":1800,"inference_duration_ms":230}
 ```
 
 `partial.text` 可能被后续结果修正，只用于实时字幕或临时 UI；业务提交、触发 LLM 时使用 `final.text`。
+
+取消当前句发送 `{"type":"utterance_cancel","utterance_id":"utt_001"}`。整次通话结束发送 `{"type":"session_end"}`，服务端回复 `{"type":"session_ended"}` 后关闭连接。未声明 v2 的旧客户端仍按“一句话一个连接 + `end`”工作。
 
 ## 4. 语音消息 TTS
 
@@ -145,7 +157,7 @@ wss://tts.havilume.me/v1/tts/stream
 ```json
 {
   "type": "start",
-  "api_key": "${API_KEY}",
+  "protocol_version": "2",
   "voice_id": "default",
   "instruct_text": "请用自然、温和的语气说话。"
 }
@@ -154,28 +166,39 @@ wss://tts.havilume.me/v1/tts/stream
 收到：
 
 ```json
-{"type":"ready","sample_rate":24000,"format":"s16le"}
+{"type":"ready","protocol_version":"2","cancellation":true,"sample_rate":24000,"channels":1,"format":"s16le"}
 ```
 
 之后按短句发送文本，建议每条 1-2 个句子：
 
 ```json
-{"type":"text","text":"今天过得怎么样？"}
+{"type":"synthesize","request_id":"tts_001","text":"今天过得怎么样？"}
 ```
 
 每条文本对应以下服务端消息序列：
 
 ```text
-JSON:    {"type":"audio_start"}
+JSON:    {"type":"audio_start","request_id":"tts_001","sample_rate":24000,"channels":1,"format":"s16le"}
 binary:  24 kHz mono s16le PCM（可有多个帧）
-JSON:    {"type":"audio_end"}
+JSON:    {"type":"audio_end","request_id":"tts_001","audio_duration_ms":1600,"inference_duration_ms":420}
 ```
 
-客户端应在收到二进制帧时立即播放，不要等整段音频结束。默认应等待 `audio_end` 后再发送下一条文本；需要预排队时由调用端自行实现队列和背压。结束通话发送：
+客户端应在收到二进制帧时立即播放，不要等整段音频结束。一个连接同时只允许一个活跃请求，默认应等待 `audio_end` 后再发送下一条文本。
+
+用户插话时发送取消。服务端必须停止继续发送音频，但保持连接：
 
 ```json
-{"type":"end"}
+{"type":"cancel","request_id":"tts_001"}
+{"type":"cancelled","request_id":"tts_001"}
 ```
+
+结束通话发送：
+
+```json
+{"type":"session_end"}
+```
+
+服务端回复 `{"type":"session_ended"}`。旧客户端的 `text` 和 `end` 消息仍兼容。
 
 ## 6. 音色注册
 
@@ -226,15 +249,22 @@ import websockets
 API_KEY = os.environ["API_KEY"]
 
 async def synthesize():
-    async with websockets.connect("wss://tts.havilume.me/v1/tts/stream") as ws:
+    async with websockets.connect(
+        "wss://tts.havilume.me/v1/tts/stream",
+        additional_headers={"Authorization": f"Bearer {API_KEY}"},
+    ) as ws:
         await ws.send(json.dumps({
             "type": "start",
-            "api_key": API_KEY,
+            "protocol_version": "2",
             "voice_id": "default",
         }))
         ready = json.loads(await ws.recv())
         assert ready["type"] == "ready"
-        await ws.send(json.dumps({"type": "text", "text": "你好，欢迎使用语音服务。"}))
+        await ws.send(json.dumps({
+            "type": "synthesize",
+            "request_id": "example-1",
+            "text": "你好，欢迎使用语音服务。",
+        }))
         with open("reply.pcm", "wb") as output:
             while True:
                 message = await ws.recv()
@@ -242,7 +272,7 @@ async def synthesize():
                     output.write(message)
                 elif json.loads(message)["type"] == "audio_end":
                     break
-        await ws.send(json.dumps({"type": "end"}))
+        await ws.send(json.dumps({"type": "session_end"}))
 
 asyncio.run(synthesize())
 ```
@@ -267,5 +297,11 @@ curl -fsS https://tts.havilume.me/healthz
 | ASR 没有 partial | PCM 不是 16 kHz mono s16le，或发送帧不足约 2 秒 |
 | TTS 无声音 | 按 24 kHz mono s16le 播放；响应不是 WAV 文件 |
 | voice_id 错误 | 先注册音色，或改用 `default` |
+
+WebSocket 业务错误统一使用 JSON，调用端按 `retryable` 决定是否重试：
+
+```json
+{"type":"error","request_id":"tts_001","code":"MODEL_BUSY","message":"another request is active","retryable":true}
+```
 
 调用端不得依赖 `127.0.0.1`、`10.112.222.142` 或 `100.104.83.111`；这些是服务端内部/网络地址，不是对外协议地址。

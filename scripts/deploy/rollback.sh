@@ -16,6 +16,6 @@ current="$(readlink -f /opt/luminous/current)"
 ln -sfn "$previous" /opt/luminous/.current-rollback
 mv -Tf /opt/luminous/.current-rollback /opt/luminous/current
 ln -sfn "$current" /opt/luminous/previous
-systemctl restart luminous-api.service luminous-worker.service
+systemctl restart luminous-api.service luminous-worker.service luminous-livekit-agent.service
 /opt/luminous/current/scripts/deploy/smoke-test.sh
 echo "Rolled back application code to $previous; user data was not changed."
