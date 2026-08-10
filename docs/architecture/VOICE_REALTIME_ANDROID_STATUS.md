@@ -5,7 +5,7 @@
 
 ## 1. 当前结论
 
-Luminous 已经完成 Android 原生 LiveKit 通话链路的主要代码，并在 WSL 内部跑通了完整闭环：
+Luminous 已经完成 Android 原生 LiveKit Cloud 通话链路，并在公网实机跑通完整闭环：
 
 ```text
 Android 原生麦克风/扬声器
@@ -24,12 +24,13 @@ Luminous Voice Agent
 当前真实状态：
 
 - Android 原生通话、前台服务、音频路由、控制接口已经实现。
-- LiveKit Server、Voice Agent、STT/TTS 协议适配已经实现。
-- WSL 内部端到端测试已经成功：真实音频输入能转写，回复会进入正常聊天与记忆流程，并收到合成语音。
+- LiveKit Cloud、Voice Agent、STT/TTS 协议适配已经实现。
+- Cloud 端到端测试已经成功：真实音频输入能转写，回复会进入正常聊天流程、持久化并返回合成语音。
 - Android APK 已成功构建并安装到实机。
-- **任意公网网络下的实机 WebRTC 媒体链路尚未打通。** 实机出现的 `Broken pipe` 主要是 LiveKit 公网 ICE/媒体端口不可达，不是 STT、TTS 或 LLM 本身失败。
+- Android 实机已经成功建立语音通话，双向语音和用户打断均验证成功，不再依赖 USB 承载媒体。
+- 尚待补齐 Wi-Fi/蜂窝切换、锁屏、蓝牙和持续弱网等系统性验收。
 
-因此，当前不能宣称“安卓公网实时通话已完成”，只能说应用代码和服务端智能链路基本完成，公网 WebRTC 部署仍待完成。
+当前主要问题已从“公网媒体不可达”转为“端到端首声延迟仍偏高”。
 
 ## 2. 为什么采用这条路径
 
@@ -132,7 +133,7 @@ Agent 加入房间后执行：
 4. 调用 `CompanionService.chat(text, history)`。
 5. TTS 流式生成并发布回复音频。
 
-语音和文字聊天使用的是同一个 `CompanionService.chat`，因此语音回复会经过相同的长期记忆、人格状态、安全规则、审计和消息持久化，不存在另建一套“无记忆 Voice Agent 聊天”的情况。
+语音和文字聊天使用的是同一个 `CompanionService.chat`：本轮生成回复前仍检索已有长期记忆并组织相同的人格、状态和安全上下文，原始用户/助手消息也即时持久化。新的长期记忆抽取不再逐轮阻塞语音回复，而标记为后续批处理；统一的记忆整理任务仍待单独实现。
 
 当前 LLM 调用仍是先得到完整文本回复，再交给 TTS；STT 和 TTS 音频是流式的，但还不是 LLM token 到 TTS 的真正逐 token 流水线。
 
@@ -234,18 +235,26 @@ AttributeError: Can't get local object 'build_server.<locals>.voice_session'
 
 因此“能进房”或“收到音频帧”不再被视为完整闭环。
 
-## 8. 下一步：打通真正的公网通话
+### 7.8 首声延迟偏高
 
-Android 代码不需要回退到 PCM WebSocket。下一步是完成 LiveKit 的公网基础设施：
+实机链路跑通后增加了不记录正文的分段耗时日志。一次 Cloud 基线中：STT final 后，`CompanionService.chat` 用时约 10.32 秒，随后 TTS 建连/握手约 2.03 秒，提交文本到首个 PCM 块约 3.44 秒。
 
-1. 提供稳定的公网域名和有效 TLS，Android 使用 `wss://...`。
-2. 为 LiveKit 配置公网可达的 ICE 地址和 UDP/TCP 端口。
-3. 部署 TURN，最好支持 TURN/TLS 443，以覆盖运营商网络、企业 Wi-Fi 和对称 NAT。
-4. `LUMINOUS_LIVEKIT_URL` 保持为服务端内部地址，`LUMINOUS_LIVEKIT_PUBLIC_URL` 设置为公网 WSS 地址。
-5. 用不在服务器局域网内、不开 USB reverse 的手机测试。
-6. 验证蜂窝网络、普通 Wi-Fi、切网、锁屏、蓝牙和打断。
+当前修复保持 Chat LLM 的原回复长度和 token 配置不变：
 
-可选部署位置包括有公网能力的服务器，或者 WSL 配合公网 IPv6/路由器端口映射/TURN；“LiveKit 能运行在 WSL”与“WSL 上的 LiveKit 能被全球手机可靠访问”是两件不同的事。
+- 语音热路径不再等待逐轮长期记忆抽取，`CompanionService.chat` 降到约 6.13 秒，其中 Chat LLM 本身约 5.71 秒。
+- TTS 在进房后预热 WebSocket，并在同一通话内跨轮复用；实测第一轮取连接为 0 毫秒、`reused=True`。
+- CosyVoice 的首次声学生成仍约 3.59 秒。该次回复后续三段服务端产出的间隔约为 1.45 秒和 0.40 秒，说明主要成本集中在首段。
+
+当前 LLM 仍是完整文本生成后再交给 TTS；下一阶段若继续降低首声时间，应实现 LLM 文本流按句交给同一个 TTS 长连接，而不是缩短正常回复内容。
+
+## 8. 下一步
+
+Android 代码不需要回退到 PCM WebSocket。下一步是：
+
+1. 在不改变回复长度的前提下，实现 Chat LLM 到 TTS 的按句流式衔接。
+2. 把 `deferred_batch` 对话交给统一的周期性记忆抽取/合并任务。
+3. 验证连续多轮通话中的 TTS 连接复用和打断后复用。
+4. 完成蜂窝网络、普通 Wi-Fi、切网、锁屏、蓝牙和弱网恢复验收。
 
 ## 9. 完成标准
 

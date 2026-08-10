@@ -17,6 +17,7 @@ from luminous.runtime.application.service import CompanionService
 from luminous.runtime.infrastructure.http import make_handler
 from luminous.runtime.application.livekit_service import LiveKitService
 from luminous.runtime.infrastructure.livekit_agent import CompanionLLM, build_server, voice_session
+from luminous.runtime.infrastructure.client import ModelClient
 
 
 class LiveKitVoiceTest(unittest.TestCase):
@@ -133,14 +134,16 @@ class LiveKitVoiceTest(unittest.TestCase):
             def __init__(self):
                 self.messages = []
                 self.histories = []
+                self.options = []
 
             def recent_chat_context(self, limit):
                 self.asserted_limit = limit
                 return [{"role": "assistant", "content": "我在听。"}]
 
-            def chat(self, text, history):
+            def chat(self, text, history, **options):
                 self.messages.append(text)
                 self.histories.append(history)
+                self.options.append(options)
                 return {"reply": f"叶筝：{text}"}
 
         async def run():
@@ -154,6 +157,9 @@ class LiveKitVoiceTest(unittest.TestCase):
             self.assertEqual(service.messages, ["今天有点累"])
             self.assertEqual(service.histories, [[{"role": "assistant", "content": "我在听。"}]])
             self.assertEqual(service.asserted_limit, 12)
+            self.assertEqual(service.options, [{
+                "extract_memory": False,
+            }])
             self.assertEqual(replies, ["叶筝：今天有点累"])
 
         asyncio.run(run())
@@ -162,6 +168,37 @@ class LiveKitVoiceTest(unittest.TestCase):
         self.assertTrue(pickle.dumps(voice_session))
         server = build_server(self.config())
         self.assertIs(server._entrypoint_fnc, voice_session)
+
+    def test_voice_chat_uses_one_model_call_and_defers_memory_extraction(self):
+        calls = []
+
+        def transport(config, messages):
+            calls.append({"max_tokens": config.max_tokens, "messages": list(messages)})
+            return "听得清楚。我在。"
+
+        config = self.config(
+            mock=False,
+            base_url="https://model.example/v1",
+            api_key="model-key",
+            model="test-model",
+        )
+        service = CompanionService(config, client=ModelClient(config, transport=transport))
+        result = service.chat(
+            "现在听得清楚吗？",
+            [],
+            extract_memory=False,
+        )
+
+        self.assertEqual(result["reply"], "听得清楚。我在。")
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["max_tokens"], config.max_tokens)
+        history = service.recent_chat_context(4)
+        self.assertEqual([item["role"] for item in history], ["user", "assistant"])
+        memory_events = [
+            event for event in service.runtime.store.read_events(limit=20)
+            if event.event_type == "memory_extracted"
+        ]
+        self.assertEqual(memory_events[-1].payload["extraction"]["mode"], "deferred_batch")
 
     def test_companion_settings_do_not_replace_deployment_stream_keys(self):
         config = self.config()

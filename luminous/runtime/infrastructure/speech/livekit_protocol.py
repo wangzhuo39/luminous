@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import time
 from uuid import uuid4
 
 from livekit import agents, rtc
@@ -12,6 +14,7 @@ from websockets.asyncio.client import connect
 PROTOCOL_VERSION = "2"
 STT_SAMPLE_RATE = 16_000
 TTS_SAMPLE_RATE = 24_000
+LOGGER = logging.getLogger("luminous.livekit_voice_protocol")
 
 
 def _json_message(message: str | bytes) -> dict[str, object]:
@@ -167,6 +170,8 @@ class _LuminousRecognizeStream(stt.RecognizeStream):
         )
         self._luminous_stt = luminous_stt
         self._language = language
+        self._utterance_started_at: dict[str, float] = {}
+        self._utterance_ended_at: dict[str, float] = {}
 
     async def _run(self) -> None:
         try:
@@ -228,6 +233,7 @@ class _LuminousRecognizeStream(stt.RecognizeStream):
             async for event in vad_stream:
                 if event.type == vad.VADEventType.START_OF_SPEECH:
                     active_utterance_id = f"utt_{uuid4().hex}"
+                    self._utterance_started_at[active_utterance_id] = time.perf_counter()
                     await websocket.send(json.dumps({
                         "type": "utterance_start",
                         "utterance_id": active_utterance_id,
@@ -243,6 +249,7 @@ class _LuminousRecognizeStream(stt.RecognizeStream):
                         await websocket.send(_frame_bytes(frame))
                 elif event.type == vad.VADEventType.END_OF_SPEECH and active_utterance_id:
                     ending_id = active_utterance_id
+                    self._utterance_ended_at[ending_id] = time.perf_counter()
                     await websocket.send(json.dumps({
                         "type": "utterance_end",
                         "utterance_id": ending_id,
@@ -282,9 +289,23 @@ class _LuminousRecognizeStream(stt.RecognizeStream):
                 if message_type == "partial"
                 else stt.SpeechEventType.FINAL_TRANSCRIPT
             )
+            utterance_id = str(payload.get("utterance_id", ""))
+            if message_type == "final":
+                now = time.perf_counter()
+                started_at = self._utterance_started_at.pop(utterance_id, now)
+                ended_at = self._utterance_ended_at.pop(utterance_id, now)
+                LOGGER.info(
+                    "voice_stt_final speech_to_final_ms=%d endpoint_to_final_ms=%d "
+                    "audio_duration_ms=%s inference_duration_ms=%s text_chars=%d",
+                    round((now - started_at) * 1000),
+                    round((now - ended_at) * 1000),
+                    payload.get("audio_duration_ms", 0),
+                    payload.get("inference_duration_ms", 0),
+                    len(text),
+                )
             self._event_ch.send_nowait(stt.SpeechEvent(
                 type=event_type,
-                request_id=str(payload.get("utterance_id", "")),
+                request_id=utterance_id,
                 alternatives=[stt.SpeechData(
                     language=str(payload.get("language", self._luminous_stt._language)),
                     text=text,
@@ -324,6 +345,8 @@ class LuminousTTS(tts.TTS):
         self._instruct_text = instruct_text
         self._model = model
         self._timeout = timeout
+        self._connection_lock = asyncio.Lock()
+        self._websocket = None
 
     @property
     def model(self) -> str:
@@ -339,6 +362,81 @@ class LuminousTTS(tts.TTS):
     def stream(self, *, conn_options=agents.DEFAULT_API_CONNECT_OPTIONS):
         return _LuminousSynthesizeStream(self, conn_options=conn_options)
 
+    async def prewarm(self) -> None:
+        """Open and authenticate the session socket before the first spoken reply."""
+        started_at = time.perf_counter()
+        websocket = None
+        try:
+            websocket, reused = await self._acquire_websocket()
+            LOGGER.info(
+                "voice_tts_prewarmed elapsed_ms=%d reused=%s",
+                round((time.perf_counter() - started_at) * 1000),
+                reused,
+            )
+        finally:
+            if websocket is not None:
+                await self._release_websocket()
+
+    async def _acquire_websocket(self):
+        await self._connection_lock.acquire()
+        try:
+            reused = self._websocket is not None and self._websocket.close_code is None
+            if not reused:
+                self._websocket = await connect(
+                    self._stream_url,
+                    additional_headers={"Authorization": f"Bearer {self._api_key}"},
+                    open_timeout=self._timeout,
+                    max_size=None,
+                )
+                await self._websocket.send(json.dumps({
+                    "type": "start",
+                    "protocol_version": PROTOCOL_VERSION,
+                    "voice_id": self._voice,
+                    "instruct_text": self._instruct_text,
+                }, ensure_ascii=False))
+                ready = _json_message(await self._websocket.recv())
+                if ready.get("type") != "ready" or not ready.get("cancellation"):
+                    raise agents.APIConnectionError("TTS does not support protocol v2")
+            return self._websocket, reused
+        except BaseException:
+            websocket = self._websocket
+            self._websocket = None
+            if websocket is not None:
+                await websocket.close()
+            if self._connection_lock.locked():
+                self._connection_lock.release()
+            raise
+
+    async def _release_websocket(self, *, broken: bool = False) -> None:
+        try:
+            if broken and self._websocket is not None:
+                await self._websocket.close()
+                self._websocket = None
+        finally:
+            if self._connection_lock.locked():
+                self._connection_lock.release()
+
+    async def aclose(self) -> None:
+        await self._connection_lock.acquire()
+        try:
+            if self._websocket is None:
+                return
+            websocket = self._websocket
+            self._websocket = None
+            try:
+                await websocket.send(json.dumps({"type": "session_end"}))
+                async with asyncio.timeout(min(self._timeout, 2.0)):
+                    while True:
+                        message = await websocket.recv()
+                        if isinstance(message, str) and _json_message(message).get("type") == "session_ended":
+                            break
+            except Exception:
+                pass
+            finally:
+                await websocket.close()
+        finally:
+            self._connection_lock.release()
+
 
 class _LuminousSynthesizeStream(tts.SynthesizeStream):
     def __init__(self, luminous_tts: LuminousTTS, *, conn_options) -> None:
@@ -353,39 +451,40 @@ class _LuminousSynthesizeStream(tts.SynthesizeStream):
             mime_type="audio/pcm",
             stream=True,
         )
+        websocket = None
+        broken = False
         try:
+            acquiring_at = time.perf_counter()
             async with asyncio.timeout(self._luminous_tts._timeout):
-                async with connect(
-                    self._luminous_tts._stream_url,
-                    additional_headers={
-                        "Authorization": f"Bearer {self._luminous_tts._api_key}",
-                    },
-                    open_timeout=self._luminous_tts._timeout,
-                    max_size=None,
-                ) as websocket:
-                    await self._run_connected(websocket, output_emitter)
+                websocket, reused = await self._luminous_tts._acquire_websocket()
+                LOGGER.info(
+                    "voice_tts_connection_ready elapsed_ms=%d reused=%s",
+                    round((time.perf_counter() - acquiring_at) * 1000),
+                    reused,
+                )
+                await self._run_connected(websocket, output_emitter)
         except TimeoutError as exc:
+            broken = True
             raise agents.APITimeoutError("Luminous TTS timed out") from exc
         except agents.APIError:
+            broken = True
             raise
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            broken = True
             raise agents.APIConnectionError(f"Luminous TTS connection failed: {exc}") from exc
+        finally:
+            if websocket is not None:
+                cleanup = asyncio.create_task(
+                    self._luminous_tts._release_websocket(broken=broken),
+                    name="luminous-tts-release",
+                )
+                await asyncio.shield(cleanup)
 
     async def _run_connected(self, websocket, output_emitter: tts.AudioEmitter) -> None:
         active_request_id = ""
         try:
-            await websocket.send(json.dumps({
-                "type": "start",
-                "protocol_version": PROTOCOL_VERSION,
-                "voice_id": self._luminous_tts._voice,
-                "instruct_text": self._luminous_tts._instruct_text,
-            }, ensure_ascii=False))
-            ready = _json_message(await websocket.recv())
-            if ready.get("type") != "ready" or not ready.get("cancellation"):
-                raise agents.APIConnectionError("TTS does not support protocol v2")
-
             text_parts: list[str] = []
             async for item in self._input_ch:
                 if isinstance(item, str):
@@ -397,6 +496,8 @@ class _LuminousSynthesizeStream(tts.SynthesizeStream):
                     continue
                 request_id = f"tts_{uuid4().hex}"
                 active_request_id = request_id
+                request_started_at = time.perf_counter()
+                LOGGER.info("voice_tts_started text_chars=%d", len(text))
                 self._mark_started()
                 output_emitter.start_segment(segment_id=request_id)
                 await websocket.send(json.dumps({
@@ -404,15 +505,15 @@ class _LuminousSynthesizeStream(tts.SynthesizeStream):
                     "request_id": request_id,
                     "text": text,
                 }, ensure_ascii=False))
-                await self._receive_audio(websocket, output_emitter, request_id)
+                await self._receive_audio(
+                    websocket,
+                    output_emitter,
+                    request_id,
+                    request_started_at=request_started_at,
+                )
                 output_emitter.end_segment()
                 active_request_id = ""
 
-            await websocket.send(json.dumps({"type": "session_end"}))
-            while True:
-                payload = _json_message(await websocket.recv())
-                if payload.get("type") == "session_ended":
-                    return
         except asyncio.CancelledError:
             if active_request_id:
                 cleanup = asyncio.create_task(
@@ -446,13 +547,37 @@ class _LuminousSynthesizeStream(tts.SynthesizeStream):
             # Cancellation is best-effort cleanup; preserve the original task cancellation.
             return
 
-    async def _receive_audio(self, websocket, output_emitter, request_id: str) -> None:
+    async def _receive_audio(
+        self,
+        websocket,
+        output_emitter,
+        request_id: str,
+        *,
+        request_started_at: float,
+    ) -> None:
         started = False
+        first_audio_logged = False
+        pcm_bytes = 0
+        pcm_chunks = 0
+        previous_chunk_at: float | None = None
+        chunk_gaps_ms: list[int] = []
         while True:
             message = await websocket.recv()
             if isinstance(message, bytes):
                 if not started:
                     raise agents.APIConnectionError("TTS sent PCM before audio_start")
+                pcm_bytes += len(message)
+                pcm_chunks += 1
+                chunk_at = time.perf_counter()
+                if previous_chunk_at is not None:
+                    chunk_gaps_ms.append(round((chunk_at - previous_chunk_at) * 1000))
+                previous_chunk_at = chunk_at
+                if not first_audio_logged:
+                    first_audio_logged = True
+                    LOGGER.info(
+                        "voice_tts_first_audio elapsed_ms=%d",
+                        round((time.perf_counter() - request_started_at) * 1000),
+                    )
                 output_emitter.push(message)
                 continue
             payload = _json_message(message)
@@ -464,6 +589,16 @@ class _LuminousSynthesizeStream(tts.SynthesizeStream):
             elif message_type == "audio_end":
                 if str(payload.get("request_id", "")) != request_id:
                     raise agents.APIConnectionError("TTS audio_end request_id mismatch")
+                LOGGER.info(
+                    "voice_tts_completed elapsed_ms=%d pcm_bytes=%d audio_ms=%d "
+                    "pcm_chunks=%d avg_chunk_gap_ms=%d max_chunk_gap_ms=%d",
+                    round((time.perf_counter() - request_started_at) * 1000),
+                    pcm_bytes,
+                    round(pcm_bytes / (TTS_SAMPLE_RATE * 2) * 1000),
+                    pcm_chunks,
+                    round(sum(chunk_gaps_ms) / len(chunk_gaps_ms)) if chunk_gaps_ms else 0,
+                    max(chunk_gaps_ms, default=0),
+                )
                 return
             elif message_type == "cancelled":
                 raise agents.APIStatusError("TTS request was cancelled", status_code=499)

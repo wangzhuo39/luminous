@@ -99,6 +99,7 @@ class LiveKitProtocolAdapterTest(unittest.TestCase):
                 frames = []
                 async for event in provider.synthesize("今晚早点休息。"):
                     frames.append(event.frame)
+                await provider.aclose()
 
             self.assertTrue(frames)
             self.assertGreater(sum(frame.samples_per_channel for frame in frames), 0)
@@ -113,8 +114,12 @@ class LiveKitProtocolAdapterTest(unittest.TestCase):
         async def run():
             request_received = asyncio.Event()
             cancel_received = asyncio.Event()
+            resumed_request_received = asyncio.Event()
+            connection_count = 0
 
             async def handler(websocket):
+                nonlocal connection_count
+                connection_count += 1
                 await websocket.recv()
                 await websocket.send(json.dumps({
                     "type": "ready",
@@ -137,6 +142,22 @@ class LiveKitProtocolAdapterTest(unittest.TestCase):
                     "request_id": request["request_id"],
                 }))
                 cancel_received.set()
+                resumed = json.loads(await websocket.recv())
+                self.assertEqual(resumed["type"], "synthesize")
+                self.assertEqual(resumed["text"], "打断后继续说。")
+                resumed_request_received.set()
+                await websocket.send(json.dumps({
+                    "type": "audio_start",
+                    "request_id": resumed["request_id"],
+                }))
+                await websocket.send(b"\x01\x00" * 480)
+                await websocket.send(json.dumps({
+                    "type": "audio_end",
+                    "request_id": resumed["request_id"],
+                }))
+                session_end = json.loads(await websocket.recv())
+                self.assertEqual(session_end["type"], "session_end")
+                await websocket.send(json.dumps({"type": "session_ended"}))
 
             async with serve(handler, "127.0.0.1", 0) as server:
                 port = server.sockets[0].getsockname()[1]
@@ -152,6 +173,62 @@ class LiveKitProtocolAdapterTest(unittest.TestCase):
                 await stream.aclose()
                 await asyncio.wait_for(cancel_received.wait(), 2)
                 await asyncio.gather(consumer, return_exceptions=True)
+                frames = []
+                async for event in provider.synthesize("打断后继续说。"):
+                    frames.append(event.frame)
+                await asyncio.wait_for(resumed_request_received.wait(), 2)
+                await provider.aclose()
+                self.assertTrue(frames)
+                self.assertEqual(connection_count, 1)
+
+        asyncio.run(run())
+
+    def test_tts_reuses_one_websocket_across_turns(self):
+        async def run():
+            connection_count = 0
+            synthesize_texts = []
+
+            async def handler(websocket):
+                nonlocal connection_count
+                connection_count += 1
+                start = json.loads(await websocket.recv())
+                self.assertEqual(start["type"], "start")
+                await websocket.send(json.dumps({
+                    "type": "ready",
+                    "protocol_version": "2",
+                    "cancellation": True,
+                }))
+                while True:
+                    request = json.loads(await websocket.recv())
+                    if request["type"] == "session_end":
+                        await websocket.send(json.dumps({"type": "session_ended"}))
+                        return
+                    synthesize_texts.append(request["text"])
+                    request_id = request["request_id"]
+                    await websocket.send(json.dumps({
+                        "type": "audio_start",
+                        "request_id": request_id,
+                    }))
+                    await websocket.send(b"\x01\x00" * 480)
+                    await websocket.send(json.dumps({
+                        "type": "audio_end",
+                        "request_id": request_id,
+                    }))
+
+            async with serve(handler, "127.0.0.1", 0) as server:
+                port = server.sockets[0].getsockname()[1]
+                provider = LuminousTTS(
+                    stream_url=f"ws://127.0.0.1:{port}",
+                    api_key="test-key",
+                )
+                await provider.prewarm()
+                for text in ("第一句。", "第二句。"):
+                    async for _ in provider.synthesize(text):
+                        pass
+                await provider.aclose()
+
+            self.assertEqual(connection_count, 1)
+            self.assertEqual(synthesize_texts, ["第一句。", "第二句。"])
 
         asyncio.run(run())
 

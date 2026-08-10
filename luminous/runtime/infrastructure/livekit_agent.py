@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from uuid import uuid4
 
 from livekit import agents
@@ -43,9 +44,25 @@ class CompanionLLMStream(llm.LLMStream):
                 break
         if not text:
             return
+        started_at = time.perf_counter()
         history = await asyncio.to_thread(self._llm.service.recent_chat_context, 12)
-        result = await asyncio.to_thread(self._llm.service.chat, text, history)
+        LOGGER.info(
+            "voice_llm_started input_chars=%d history_items=%d",
+            len(text),
+            len(history),
+        )
+        result = await asyncio.to_thread(
+            self._llm.service.chat,
+            text,
+            history,
+            extract_memory=False,
+        )
         reply = str(result.get("reply", "")).strip()
+        LOGGER.info(
+            "voice_llm_completed elapsed_ms=%d reply_chars=%d",
+            round((time.perf_counter() - started_at) * 1000),
+            len(reply),
+        )
         if reply:
             self._event_ch.send_nowait(
                 llm.ChatChunk(
@@ -100,6 +117,19 @@ async def voice_session(ctx: agents.JobContext) -> None:
         instruct_text=config.tts_instruct_text,
         timeout=float(config.voice_timeout_seconds),
     )
+    tts_prewarm_task = asyncio.create_task(
+        tts_provider.prewarm(),
+        name="luminous-tts-prewarm",
+    )
+
+    def log_prewarm_failure(task: asyncio.Task) -> None:
+        if task.cancelled():
+            return
+        error = task.exception()
+        if error is not None:
+            LOGGER.warning("voice_tts_prewarm_failed error=%s", error)
+
+    tts_prewarm_task.add_done_callback(log_prewarm_failure)
     session = agents.AgentSession(
         stt=stt_provider,
         vad=vad_model,

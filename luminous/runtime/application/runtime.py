@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import math
 import re
+import time
 from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlparse
 
-from luminous.runtime.application.memory_extractor import MemoryExtractor
+from luminous.runtime.application.memory_extractor import MemoryExtractionResult, MemoryExtractor
 from luminous.runtime.application.life_flow_service import LifeFlowService
 from luminous.runtime.application.notification_bridge import NotificationBridge, NotificationDelivery
 from luminous.runtime.application.prompts import SYSTEM_PROMPT
@@ -38,6 +40,7 @@ PROACTIVE_SYSTEM_PROMPT = """你正在替现实用户发一条低频主动联系
 - 必须像一个认真记得对方的人，但不要夸张撒娇。
 - 遇到风险信号时，优先承接、关心、鼓励联系现实支持，不要渲染。
 """
+LOGGER = logging.getLogger("luminous.companion_runtime")
 
 
 class CompanionRuntime:
@@ -83,7 +86,13 @@ class CompanionRuntime:
         }
         self._refresh_companion_settings()
 
-    def chat(self, user_text: str, history: Sequence[dict[str, object]] | None = None) -> dict[str, object]:
+    def chat(
+        self,
+        user_text: str,
+        history: Sequence[dict[str, object]] | None = None,
+        *,
+        extract_memory: bool = True,
+    ) -> dict[str, object]:
         self._refresh_companion_settings()
         clean_user_text = user_text.strip()
         if not clean_user_text:
@@ -103,10 +112,15 @@ class CompanionRuntime:
             recent_events=recent_events,
         )
 
+        model_started_at = time.perf_counter()
         if self.config.mock:
             raw = mock_model_output(clean_user_text)
         else:
             raw = self.client.complete(prompt_package.messages)
+        LOGGER.info(
+            "companion_reply_model_completed elapsed_ms=%d",
+            round((time.perf_counter() - model_started_at) * 1000),
+        )
 
         parsed = parse_model_output(raw)
         risk_flags = _risk_flags(clean_user_text, parsed.reply)
@@ -136,13 +150,22 @@ class CompanionRuntime:
             now=now,
             actor="assistant",
         )
-        memory_result = self.memory_extractor.extract(
-            clean_user_text,
-            parsed.reply,
-            source_event_id=user_event.event_id,
-            trace_id=trace_id,
-            now=now,
-        )
+        if extract_memory:
+            memory_started_at = time.perf_counter()
+            memory_result = self.memory_extractor.extract(
+                clean_user_text,
+                parsed.reply,
+                source_event_id=user_event.event_id,
+                trace_id=trace_id,
+                now=now,
+            )
+            LOGGER.info(
+                "companion_memory_extraction_completed elapsed_ms=%d mode=%s",
+                round((time.perf_counter() - memory_started_at) * 1000),
+                memory_result.mode,
+            )
+        else:
+            memory_result = MemoryExtractionResult(records=[], mode="deferred_batch")
         with self.store.atomic():
             memory_records = [
                 self.store.write_memory(record, trace_id=trace_id, emit_audit=True)

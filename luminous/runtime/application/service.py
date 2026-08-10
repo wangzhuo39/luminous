@@ -49,8 +49,18 @@ class CompanionService:
         self.voice = voice_service or VoiceService(config)
         self.livekit = LiveKitService(config, self.runtime.store)
 
-    def chat(self, user_text: str, history: Sequence[dict[str, object]] | None = None) -> dict[str, object]:
-        return public_chat(self.runtime.chat(user_text, history))
+    def chat(
+        self,
+        user_text: str,
+        history: Sequence[dict[str, object]] | None = None,
+        *,
+        extract_memory: bool = True,
+    ) -> dict[str, object]:
+        return public_chat(self.runtime.chat(
+            user_text,
+            history,
+            extract_memory=extract_memory,
+        ))
 
     def recent_chat_context(self, limit: int = 12) -> list[dict[str, object]]:
         """Return persisted text/voice turns in the same shape used by normal chat."""

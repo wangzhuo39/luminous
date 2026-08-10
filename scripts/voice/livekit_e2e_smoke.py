@@ -102,6 +102,9 @@ async def run_smoke(question: str, timeout: float, server_url: str = "") -> dict
         "remote_speech_frames": 0,
         "remote_audio_ms": 0,
         "transcripts": [],
+        "input_ended_at": None,
+        "first_remote_speech_at": None,
+        "first_final_transcript_at": None,
     }
 
     async def consume_audio(track: rtc.RemoteAudioTrack) -> None:
@@ -115,6 +118,8 @@ async def run_smoke(question: str, timeout: float, server_url: str = "") -> dict
                 )
                 if _rms(frame.data.tobytes()) >= 100:
                     evidence["remote_speech_frames"] += 1
+                    if evidence["first_remote_speech_at"] is None:
+                        evidence["first_remote_speech_at"] = asyncio.get_running_loop().time()
                 if evidence["remote_speech_frames"] >= 10:
                     response_audio_seen.set()
         finally:
@@ -135,9 +140,12 @@ async def run_smoke(question: str, timeout: float, server_url: str = "") -> dict
         for segment in segments:
             text = getattr(segment, "text", "").strip()
             if text:
+                is_final = bool(getattr(segment, "final", False))
+                if is_final and evidence["first_final_transcript_at"] is None:
+                    evidence["first_final_transcript_at"] = asyncio.get_running_loop().time()
                 evidence["transcripts"].append({
                     "text": text,
-                    "final": bool(getattr(segment, "final", False)),
+                    "final": is_final,
                 })
 
     try:
@@ -174,6 +182,7 @@ async def run_smoke(question: str, timeout: float, server_url: str = "") -> dict
                 samples_per_channel=960,
             ))
             await asyncio.sleep(0.02)
+        evidence["input_ended_at"] = asyncio.get_running_loop().time()
         silence = b"\0" * bytes_per_frame
         for _ in range(75):
             await source.capture_frame(rtc.AudioFrame(
@@ -206,6 +215,12 @@ async def run_smoke(question: str, timeout: float, server_url: str = "") -> dict
             "remote_audio_frames": evidence["remote_audio_frames"],
             "remote_speech_frames": evidence["remote_speech_frames"],
             "remote_audio_ms": evidence["remote_audio_ms"],
+            "endpoint_to_final_transcript_ms": _elapsed_ms(
+                evidence["input_ended_at"], evidence["first_final_transcript_at"]
+            ),
+            "endpoint_to_first_remote_speech_ms": _elapsed_ms(
+                evidence["input_ended_at"], evidence["first_remote_speech_at"]
+            ),
             "latest_user": latest_user,
             "latest_assistant": latest_assistant,
             "final_transcripts": [
@@ -226,6 +241,12 @@ async def run_smoke(question: str, timeout: float, server_url: str = "") -> dict
         )
         if ended.get("status") != "ended":
             raise RuntimeError("voice session did not end cleanly")
+
+
+def _elapsed_ms(start: float | None, end: float | None) -> int | None:
+    if start is None or end is None:
+        return None
+    return round((end - start) * 1000)
 
 
 def main() -> None:

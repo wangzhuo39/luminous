@@ -270,7 +270,9 @@ class CompanionRuntimeStore:
         if role:
             sql += " WHERE role = ?"
             params.append(role)
-        sql += " ORDER BY created_at ASC, message_id ASC"
+        # User and assistant messages in one turn intentionally share a timestamp.
+        # SQLite rowid preserves their insertion order; random event IDs do not.
+        sql += " ORDER BY created_at ASC, rowid ASC"
         rows = self._fetch_all(sql, tuple(params))
         payloads = [_row_to_raw_message(row) for row in rows]
         if limit is not None and limit < len(payloads):
