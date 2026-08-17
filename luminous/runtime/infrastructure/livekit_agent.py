@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import threading
 import time
 from uuid import uuid4
 
@@ -17,6 +18,63 @@ from luminous.runtime.infrastructure.speech.livekit_protocol import LuminousSTT,
 
 
 LOGGER = logging.getLogger("luminous.livekit_agent")
+AGENT_CONTROL_TOPIC = "luminous.voice.control"
+TTS_WARMUP_GREETING = "我在。"
+_HIDDEN_SPEECH_TAGS = {"think", "system_thinking", "role_thinking", "role_action"}
+
+
+class _SpokenTextFilter:
+    """Incrementally remove model-only tags before text reaches TTS."""
+
+    def __init__(self) -> None:
+        self._mode = "text"
+        self._hidden_tag = ""
+        self._tag_buffer = ""
+
+    def feed(self, text: str) -> str:
+        visible: list[str] = []
+        for char in text:
+            if self._mode == "text":
+                if char == "<":
+                    self._mode = "tag"
+                    self._tag_buffer = char
+                else:
+                    visible.append(char)
+                continue
+
+            if self._mode == "hidden":
+                if char == "<":
+                    self._mode = "hidden_tag"
+                    self._tag_buffer = char
+                continue
+
+            self._tag_buffer += char
+            if char != ">":
+                if len(self._tag_buffer) > 80:
+                    self._tag_buffer = ""
+                    self._mode = "hidden" if self._hidden_tag else "text"
+                continue
+
+            tag = self._tag_buffer[1:-1].strip().lower().split(maxsplit=1)[0]
+            self._tag_buffer = ""
+            closing = tag.startswith("/")
+            name = tag.lstrip("/")
+            if self._mode == "tag" and not closing and name in _HIDDEN_SPEECH_TAGS:
+                self._hidden_tag = name
+                self._mode = "hidden"
+            elif self._mode == "hidden_tag" and closing and name in _HIDDEN_SPEECH_TAGS:
+                self._hidden_tag = ""
+                self._mode = "text"
+            else:
+                self._mode = "hidden" if self._hidden_tag else "text"
+        return "".join(visible)
+
+    def finish(self) -> str:
+        # Incomplete markup or hidden reasoning must never be spoken.
+        self._tag_buffer = ""
+        self._mode = "text"
+        self._hidden_tag = ""
+        return ""
 
 
 class CompanionLLM(llm.LLM):
@@ -45,29 +103,102 @@ class CompanionLLMStream(llm.LLMStream):
         if not text:
             return
         started_at = time.perf_counter()
+        history_started_at = time.perf_counter()
         history = await asyncio.to_thread(self._llm.service.recent_chat_context, 12)
         LOGGER.info(
-            "voice_llm_started input_chars=%d history_items=%d",
+            "voice_llm_started input_chars=%d history_items=%d history_ms=%d",
             len(text),
             len(history),
+            round((time.perf_counter() - history_started_at) * 1000),
         )
-        result = await asyncio.to_thread(
-            self._llm.service.chat,
-            text,
-            history,
-            extract_memory=False,
-        )
-        reply = str(result.get("reply", "")).strip()
-        LOGGER.info(
-            "voice_llm_completed elapsed_ms=%d reply_chars=%d",
-            round((time.perf_counter() - started_at) * 1000),
-            len(reply),
-        )
-        if reply:
+        loop = asyncio.get_running_loop()
+        events: asyncio.Queue[tuple[str, object]] = asyncio.Queue()
+        cancelled = threading.Event()
+        text_filter = _SpokenTextFilter()
+        visible_parts: list[str] = []
+        first_delta_logged = False
+        completion_id = f"luminous-{uuid4().hex}"
+
+        def enqueue(kind: str, value: object) -> None:
+            if cancelled.is_set():
+                return
+            try:
+                loop.call_soon_threadsafe(events.put_nowait, (kind, value))
+            except RuntimeError:
+                return
+
+        def run_chat() -> None:
+            try:
+                stream_chat = getattr(self._llm.service, "chat_stream", None)
+                if callable(stream_chat):
+                    result = stream_chat(
+                        text,
+                        history,
+                        extract_memory=False,
+                        on_model_delta=lambda delta: enqueue("delta", delta),
+                        cancelled=cancelled.is_set,
+                    )
+                else:
+                    result = self._llm.service.chat(
+                        text,
+                        history,
+                        extract_memory=False,
+                    )
+                    enqueue("delta", str(result.get("reply", "")))
+            except BaseException as exc:  # noqa: BLE001 - forward worker failure to the async stream.
+                enqueue("error", exc)
+            else:
+                enqueue("done", result)
+
+        worker = asyncio.create_task(asyncio.to_thread(run_chat), name="luminous-chat-stream")
+        completed = False
+        try:
+            while True:
+                kind, value = await events.get()
+                if kind == "delta":
+                    visible = text_filter.feed(str(value))
+                    if not visible:
+                        continue
+                    if not first_delta_logged:
+                        first_delta_logged = True
+                        LOGGER.info(
+                            "voice_llm_first_spoken_delta elapsed_ms=%d",
+                            round((time.perf_counter() - started_at) * 1000),
+                        )
+                    visible_parts.append(visible)
+                    self._send_text(visible, completion_id)
+                    continue
+                if kind == "error":
+                    raise value
+                result = value
+                text_filter.finish()
+                reply = str(result.get("reply", "")).strip()
+                if not "".join(visible_parts).strip() and reply:
+                    fallback_filter = _SpokenTextFilter()
+                    spoken_reply = fallback_filter.feed(reply) + fallback_filter.finish()
+                    if spoken_reply.strip():
+                        visible_parts.append(spoken_reply)
+                        self._send_text(spoken_reply, completion_id)
+                LOGGER.info(
+                    "voice_llm_completed elapsed_ms=%d reply_chars=%d streamed_chars=%d",
+                    round((time.perf_counter() - started_at) * 1000),
+                    len(reply),
+                    len("".join(visible_parts)),
+                )
+                completed = True
+                await worker
+                return
+        finally:
+            if not completed:
+                cancelled.set()
+                worker.cancel()
+
+    def _send_text(self, text: str, completion_id: str) -> None:
+        if text:
             self._event_ch.send_nowait(
                 llm.ChatChunk(
-                    id=f"luminous-{uuid4().hex}",
-                    delta=llm.ChoiceDelta(role="assistant", content=reply),
+                    id=completion_id,
+                    delta=llm.ChoiceDelta(role="assistant", content=text),
                 )
             )
 
@@ -118,7 +249,7 @@ async def voice_session(ctx: agents.JobContext) -> None:
         timeout=float(config.voice_timeout_seconds),
     )
     tts_prewarm_task = asyncio.create_task(
-        tts_provider.prewarm(),
+        tts_provider.aprewarm(),
         name="luminous-tts-prewarm",
     )
 
@@ -141,18 +272,33 @@ async def voice_session(ctx: agents.JobContext) -> None:
     )
     try:
         await ctx.connect(auto_subscribe=agents.AutoSubscribe.AUDIO_ONLY)
-        if voice_session_id:
-            await asyncio.to_thread(
-                service.update_livekit_voice_session,
-                voice_session_id,
-                status="connected",
-            )
         await session.start(
             agent=agents.Agent(
                 instructions="你是叶筝。保持自然、简洁、温和的中文口语回答，不要输出 Markdown。",
             ),
             room=ctx.room,
         )
+        warmup_started_at = time.perf_counter()
+        warmup_speech = session.say(
+            TTS_WARMUP_GREETING,
+            allow_interruptions=False,
+            add_to_chat_ctx=False,
+        )
+        await warmup_speech.wait_for_playout()
+        warmup_elapsed_ms = round((time.perf_counter() - warmup_started_at) * 1000)
+        LOGGER.info("voice_tts_warmup_played elapsed_ms=%d", warmup_elapsed_ms)
+        await ctx.room.local_participant.publish_data(
+            json.dumps({"type": "agent_ready", "tts_warmup_ms": warmup_elapsed_ms}),
+            reliable=True,
+            topic=AGENT_CONTROL_TOPIC,
+        )
+        if voice_session_id:
+            await asyncio.to_thread(
+                service.update_livekit_voice_session,
+                voice_session_id,
+                status="connected",
+                metrics={"tts_warmup_ms": warmup_elapsed_ms},
+            )
     except Exception as exc:
         if voice_session_id:
             await asyncio.to_thread(

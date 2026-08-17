@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from luminous.runtime.application.livekit_service import LiveKitService
@@ -60,6 +60,25 @@ class CompanionService:
             user_text,
             history,
             extract_memory=extract_memory,
+        ))
+
+    def chat_stream(
+        self,
+        user_text: str,
+        history: Sequence[dict[str, object]] | None = None,
+        *,
+        extract_memory: bool = True,
+        on_model_delta: Callable[[str], None],
+        cancelled: Callable[[], bool] | None = None,
+    ) -> dict[str, object]:
+        """Stream model text while keeping the normal chat persistence path."""
+        return public_chat(self.runtime.chat(
+            user_text,
+            history,
+            extract_memory=extract_memory,
+            stream_model=True,
+            on_model_delta=on_model_delta,
+            cancelled=cancelled,
         ))
 
     def recent_chat_context(self, limit: int = 12) -> list[dict[str, object]]:

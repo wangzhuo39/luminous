@@ -6,10 +6,83 @@ from livekit import rtc
 from livekit.agents import stt
 from websockets.asyncio.server import serve
 
-from luminous.runtime.infrastructure.speech.livekit_protocol import LuminousSTT, LuminousTTS
+from luminous.runtime.infrastructure.speech.livekit_protocol import LuminousSTT, LuminousTTS, _PhraseBuffer
 
 
 class LiveKitProtocolAdapterTest(unittest.TestCase):
+    def test_phrase_buffer_releases_complete_sentence_before_end_of_input(self):
+        buffer = _PhraseBuffer()
+
+        self.assertEqual(buffer.feed("听起来你今天"), [])
+        self.assertEqual(buffer.feed("挺累的。后面还"), ["听起来你今天挺累的。"])
+        self.assertEqual(buffer.feed("有一句。"), ["后面还有一句。"])
+        self.assertEqual(buffer.feed("", final=True), [])
+
+    def test_phrase_buffer_keeps_short_preface_with_following_sentence(self):
+        buffer = _PhraseBuffer()
+
+        self.assertEqual(buffer.feed("嗯。听起来你今天挺累的。"), ["嗯。听起来你今天挺累的。"])
+
+    def test_phrase_buffer_does_not_wait_for_an_overlong_sentence(self):
+        buffer = _PhraseBuffer(max_chars=12)
+
+        self.assertEqual(buffer.feed("这是一句一直没有停顿而且仍在继续生成的长回复"), ["这是一句一直没有停顿而且"])
+
+    def test_tts_starts_complete_phrase_before_model_stream_ends(self):
+        async def run():
+            synthesize_texts = []
+            first_phrase_received = asyncio.Event()
+
+            async def handler(websocket):
+                await websocket.recv()
+                await websocket.send(json.dumps({
+                    "type": "ready",
+                    "protocol_version": "2",
+                    "cancellation": True,
+                }))
+                while True:
+                    request = json.loads(await websocket.recv())
+                    if request["type"] == "session_end":
+                        await websocket.send(json.dumps({"type": "session_ended"}))
+                        return
+                    synthesize_texts.append(request["text"])
+                    first_phrase_received.set()
+                    request_id = request["request_id"]
+                    await websocket.send(json.dumps({
+                        "type": "audio_start",
+                        "request_id": request_id,
+                    }))
+                    await websocket.send(b"\x01\x00" * 480)
+                    await websocket.send(json.dumps({
+                        "type": "audio_end",
+                        "request_id": request_id,
+                    }))
+
+            async with serve(handler, "127.0.0.1", 0) as server:
+                port = server.sockets[0].getsockname()[1]
+                provider = LuminousTTS(
+                    stream_url=f"ws://127.0.0.1:{port}",
+                    api_key="test-key",
+                )
+                stream = provider.stream()
+
+                async def consume():
+                    async for _ in stream:
+                        pass
+
+                consumer = asyncio.create_task(consume())
+                stream.push_text("听起来你今天挺累的。后半")
+                await asyncio.wait_for(first_phrase_received.wait(), 2)
+                self.assertEqual(synthesize_texts, ["听起来你今天挺累的。"])
+                stream.push_text("句也说完了。")
+                stream.end_input()
+                await asyncio.wait_for(consumer, 2)
+                await provider.aclose()
+
+            self.assertEqual(synthesize_texts, ["听起来你今天挺累的。", "后半句也说完了。"])
+
+        asyncio.run(run())
+
     def test_stt_recognize_uses_v2_protocol_and_returns_final(self):
         async def run():
             controls = []
@@ -221,7 +294,7 @@ class LiveKitProtocolAdapterTest(unittest.TestCase):
                     stream_url=f"ws://127.0.0.1:{port}",
                     api_key="test-key",
                 )
-                await provider.prewarm()
+                await provider.aprewarm()
                 for text in ("第一句。", "第二句。"):
                     async for _ in provider.synthesize(text):
                         pass

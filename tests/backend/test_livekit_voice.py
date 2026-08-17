@@ -140,10 +140,16 @@ class LiveKitVoiceTest(unittest.TestCase):
                 self.asserted_limit = limit
                 return [{"role": "assistant", "content": "我在听。"}]
 
-            def chat(self, text, history, **options):
+            def chat_stream(self, text, history, **options):
                 self.messages.append(text)
                 self.histories.append(history)
+                on_model_delta = options.pop("on_model_delta")
+                cancelled = options.pop("cancelled")
                 self.options.append(options)
+                self.assert_not_cancelled = not cancelled()
+                on_model_delta("<role_")
+                on_model_delta("action>轻轻点头</role_thinking>叶筝：")
+                on_model_delta(text)
                 return {"reply": f"叶筝：{text}"}
 
         async def run():
@@ -157,10 +163,11 @@ class LiveKitVoiceTest(unittest.TestCase):
             self.assertEqual(service.messages, ["今天有点累"])
             self.assertEqual(service.histories, [[{"role": "assistant", "content": "我在听。"}]])
             self.assertEqual(service.asserted_limit, 12)
+            self.assertTrue(service.assert_not_cancelled)
             self.assertEqual(service.options, [{
                 "extract_memory": False,
             }])
-            self.assertEqual(replies, ["叶筝：今天有点累"])
+            self.assertEqual(replies, ["叶筝：", "今天有点累"])
 
         asyncio.run(run())
 
@@ -192,6 +199,11 @@ class LiveKitVoiceTest(unittest.TestCase):
         self.assertEqual(result["reply"], "听得清楚。我在。")
         self.assertEqual(len(calls), 1)
         self.assertEqual(calls[0]["max_tokens"], config.max_tokens)
+        normal_system_text = "\n".join(
+            message["content"] for message in calls[0]["messages"] if message["role"] == "system"
+        )
+        self.assertIn("输出格式必须严格为", normal_system_text)
+        self.assertNotIn("实时语音输出规则", normal_system_text)
         history = service.recent_chat_context(4)
         self.assertEqual([item["role"] for item in history], ["user", "assistant"])
         memory_events = [
@@ -199,6 +211,47 @@ class LiveKitVoiceTest(unittest.TestCase):
             if event.event_type == "memory_extracted"
         ]
         self.assertEqual(memory_events[-1].payload["extraction"]["mode"], "deferred_batch")
+
+    def test_voice_chat_streams_model_deltas_and_persists_full_reply(self):
+        calls = []
+
+        def stream_transport(config, messages):
+            calls.append({"max_tokens": config.max_tokens, "messages": list(messages)})
+            yield "听起来你今天挺累的。"
+            yield "如果你愿意的话，我们慢慢说。"
+
+        config = self.config(
+            mock=False,
+            base_url="https://model.example/v1",
+            api_key="model-key",
+            model="test-model",
+        )
+        client = ModelClient(
+            config,
+            transport=lambda config, messages: "不应走非流式接口",
+            stream_transport=stream_transport,
+        )
+        service = CompanionService(config, client=client)
+        deltas = []
+        result = service.chat_stream(
+            "今天很累",
+            [],
+            extract_memory=False,
+            on_model_delta=deltas.append,
+        )
+
+        self.assertEqual(deltas, ["听起来你今天挺累的。", "如果你愿意的话，我们慢慢说。"])
+        self.assertEqual(result["reply"], "".join(deltas))
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["max_tokens"], config.max_tokens)
+        voice_system_text = "\n".join(
+            message["content"] for message in calls[0]["messages"] if message["role"] == "system"
+        )
+        self.assertIn("实时语音输出规则", voice_system_text)
+        self.assertIn("只输出叶筝真正说出口的台词", voice_system_text)
+        self.assertNotIn("输出格式必须严格为", voice_system_text)
+        history = service.recent_chat_context(4)
+        self.assertEqual(history[-1], {"role": "assistant", "content": "".join(deltas)})
 
     def test_companion_settings_do_not_replace_deployment_stream_keys(self):
         config = self.config()

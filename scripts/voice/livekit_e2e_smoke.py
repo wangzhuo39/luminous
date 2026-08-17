@@ -19,6 +19,7 @@ from luminous.runtime.config import load_backend_config
 
 
 API_BASE = "http://127.0.0.1:8000"
+AGENT_CONTROL_TOPIC = "luminous.voice.control"
 
 
 def _request(config, path: str, *, method: str, body: dict | None = None) -> dict:
@@ -95,6 +96,7 @@ async def run_smoke(question: str, timeout: float, server_url: str = "") -> dict
     )
     room = rtc.Room()
     agent_seen = asyncio.Event()
+    agent_ready = asyncio.Event()
     response_audio_seen = asyncio.Event()
     consumers: list[asyncio.Task] = []
     evidence = {
@@ -116,7 +118,10 @@ async def run_smoke(question: str, timeout: float, server_url: str = "") -> dict
                 evidence["remote_audio_ms"] += round(
                     1_000 * frame.samples_per_channel / frame.sample_rate
                 )
-                if _rms(frame.data.tobytes()) >= 100:
+                if (
+                    evidence["first_final_transcript_at"] is not None
+                    and _rms(frame.data.tobytes()) >= 100
+                ):
                     evidence["remote_speech_frames"] += 1
                     if evidence["first_remote_speech_at"] is None:
                         evidence["first_remote_speech_at"] = asyncio.get_running_loop().time()
@@ -148,12 +153,33 @@ async def run_smoke(question: str, timeout: float, server_url: str = "") -> dict
                     "final": is_final,
                 })
 
+    @room.on("data_received")
+    def on_data_received(packet) -> None:
+        if getattr(packet, "topic", "") != AGENT_CONTROL_TOPIC:
+            return
+        try:
+            payload = json.loads(bytes(packet.data).decode())
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return
+        if payload.get("type") == "agent_ready":
+            agent_ready.set()
+
     try:
         await room.connect(server_url or control["serverUrl"], control["participantToken"])
         try:
             await asyncio.wait_for(agent_seen.wait(), timeout=20)
         except asyncio.TimeoutError:
             pass
+        await asyncio.wait_for(agent_ready.wait(), timeout=45)
+        # The warmup greeting is intentionally played before agent_ready. Measure only
+        # the user turn and the subsequent reply, not that startup audio/transcript.
+        evidence["remote_audio_frames"] = 0
+        evidence["remote_speech_frames"] = 0
+        evidence["remote_audio_ms"] = 0
+        evidence["transcripts"].clear()
+        evidence["first_remote_speech_at"] = None
+        evidence["first_final_transcript_at"] = None
+        response_audio_seen.clear()
         source = rtc.AudioSource(48_000, 1, queue_size_ms=2_000)
         track = rtc.LocalAudioTrack.create_audio_track("microphone", source)
         options = rtc.TrackPublishOptions()

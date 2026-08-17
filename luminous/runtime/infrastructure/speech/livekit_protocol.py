@@ -17,6 +17,59 @@ TTS_SAMPLE_RATE = 24_000
 LOGGER = logging.getLogger("luminous.livekit_voice_protocol")
 
 
+class _PhraseBuffer:
+    """Turn token deltas into natural TTS-sized phrases without waiting for EOF."""
+
+    _STRONG_ENDINGS = frozenset("。！？!?\n")
+    _SOFT_ENDINGS = frozenset("，,；;：:、")
+
+    def __init__(self, *, min_chars: int = 6, soft_chars: int = 18, max_chars: int = 36) -> None:
+        self._text = ""
+        self._min_chars = min_chars
+        self._soft_chars = soft_chars
+        self._max_chars = max_chars
+
+    def feed(self, text: str, *, final: bool = False) -> list[str]:
+        self._text += text
+        phrases: list[str] = []
+        while True:
+            boundary = self._next_boundary()
+            if boundary is None:
+                break
+            phrase = self._text[:boundary].strip()
+            self._text = self._text[boundary:]
+            if phrase:
+                phrases.append(phrase)
+        if final:
+            phrase = self._text.strip()
+            self._text = ""
+            if phrase:
+                phrases.append(phrase)
+        return phrases
+
+    def _next_boundary(self) -> int | None:
+        for index, char in enumerate(self._text):
+            prefix = self._text[: index + 1].strip()
+            strong_ellipsis = char == "…" and index > 0 and self._text[index - 1] == "…"
+            if (char in self._STRONG_ENDINGS or strong_ellipsis) and len(prefix) >= self._min_chars:
+                if index + 1 <= self._max_chars:
+                    return index + 1
+                break
+
+        for index, char in enumerate(self._text[: self._max_chars]):
+            if char in self._SOFT_ENDINGS and len(self._text[: index + 1].strip()) >= self._soft_chars:
+                return index + 1
+
+        if len(self._text.strip()) < self._max_chars:
+            return None
+
+        hard_limit = min(len(self._text), self._max_chars)
+        for index in range(hard_limit - 1, self._min_chars - 1, -1):
+            if self._text[index] in self._SOFT_ENDINGS or self._text[index].isspace():
+                return index + 1
+        return hard_limit
+
+
 def _json_message(message: str | bytes) -> dict[str, object]:
     if not isinstance(message, str):
         raise agents.APIConnectionError("voice service sent binary data where JSON was expected")
@@ -362,7 +415,7 @@ class LuminousTTS(tts.TTS):
     def stream(self, *, conn_options=agents.DEFAULT_API_CONNECT_OPTIONS):
         return _LuminousSynthesizeStream(self, conn_options=conn_options)
 
-    async def prewarm(self) -> None:
+    async def aprewarm(self) -> None:
         """Open and authenticate the session socket before the first spoken reply."""
         started_at = time.perf_counter()
         websocket = None
@@ -484,35 +537,46 @@ class _LuminousSynthesizeStream(tts.SynthesizeStream):
 
     async def _run_connected(self, websocket, output_emitter: tts.AudioEmitter) -> None:
         active_request_id = ""
+        phrase_buffer = _PhraseBuffer()
+        segment_index = 0
+        output_segment_started = False
         try:
-            text_parts: list[str] = []
             async for item in self._input_ch:
                 if isinstance(item, str):
-                    text_parts.append(item)
-                    continue
-                text = "".join(text_parts).strip()
-                text_parts.clear()
-                if not text:
-                    continue
-                request_id = f"tts_{uuid4().hex}"
-                active_request_id = request_id
-                request_started_at = time.perf_counter()
-                LOGGER.info("voice_tts_started text_chars=%d", len(text))
-                self._mark_started()
-                output_emitter.start_segment(segment_id=request_id)
-                await websocket.send(json.dumps({
-                    "type": "synthesize",
-                    "request_id": request_id,
-                    "text": text,
-                }, ensure_ascii=False))
-                await self._receive_audio(
-                    websocket,
-                    output_emitter,
-                    request_id,
-                    request_started_at=request_started_at,
-                )
-                output_emitter.end_segment()
-                active_request_id = ""
+                    phrases = phrase_buffer.feed(item)
+                    input_boundary = False
+                else:
+                    phrases = phrase_buffer.feed("", final=True)
+                    input_boundary = True
+                for text in phrases:
+                    segment_index += 1
+                    request_id = f"tts_{uuid4().hex}"
+                    active_request_id = request_id
+                    request_started_at = time.perf_counter()
+                    LOGGER.info(
+                        "voice_tts_phrase_started segment=%d text_chars=%d",
+                        segment_index,
+                        len(text),
+                    )
+                    if not output_segment_started:
+                        self._mark_started()
+                        output_emitter.start_segment(segment_id=f"tts_stream_{uuid4().hex}")
+                        output_segment_started = True
+                    await websocket.send(json.dumps({
+                        "type": "synthesize",
+                        "request_id": request_id,
+                        "text": text,
+                    }, ensure_ascii=False))
+                    await self._receive_audio(
+                        websocket,
+                        output_emitter,
+                        request_id,
+                        request_started_at=request_started_at,
+                    )
+                    active_request_id = ""
+                if input_boundary and output_segment_started:
+                    output_emitter.end_segment()
+                    output_segment_started = False
 
         except asyncio.CancelledError:
             if active_request_id:

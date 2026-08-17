@@ -81,8 +81,9 @@ class SessionAuth:
             cutoff = now - _FAILURE_WINDOW
             while self._failed_logins and self._failed_logins[0] < cutoff:
                 self._failed_logins.popleft()
-            expected = self.config.tester_access_code
-            if not hmac.compare_digest(str(access_code).strip(), expected):
+            provided = str(access_code).strip().encode("utf-8")
+            expected = self.config.tester_access_code.encode("utf-8")
+            if not hmac.compare_digest(provided, expected):
                 self._failed_logins.append(now)
                 if len(self._failed_logins) >= _MAX_FAILURES:
                     self._blocked_until = now + _LOCKOUT_DURATION

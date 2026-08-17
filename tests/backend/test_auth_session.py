@@ -150,6 +150,22 @@ class CookieAuthHTTPTest(unittest.TestCase):
         self.assertEqual(status, 403)
         self.assertEqual(body["error"]["code"], "origin_not_allowed")
 
+    def test_login_accepts_non_ascii_access_code(self):
+        self._stop_server()
+        self.config.tester_access_code = "中文测试邀请码"
+        self._start_server()
+
+        status, body, headers = self.request(
+            "POST",
+            "/api/auth/login",
+            {"access_code": "中文测试邀请码"},
+            {"Origin": "https://test.example"},
+        )
+
+        self.assertEqual(status, 200, body)
+        self.assertTrue(body["authenticated"])
+        self.assertIn("__Host-luminous_session=", headers["Set-Cookie"])
+
     def test_repeated_invalid_codes_are_rate_limited(self):
         headers = {"Origin": "https://test.example"}
         for _ in range(5):

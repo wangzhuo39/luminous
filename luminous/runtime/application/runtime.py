@@ -5,7 +5,7 @@ import logging
 import math
 import re
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlparse
@@ -41,6 +41,10 @@ PROACTIVE_SYSTEM_PROMPT = """你正在替现实用户发一条低频主动联系
 - 遇到风险信号时，优先承接、关心、鼓励联系现实支持，不要渲染。
 """
 LOGGER = logging.getLogger("luminous.companion_runtime")
+
+
+class ChatStreamCancelled(RuntimeError):
+    """Raised when a realtime caller interrupts an in-flight model stream."""
 
 
 class CompanionRuntime:
@@ -92,8 +96,14 @@ class CompanionRuntime:
         history: Sequence[dict[str, object]] | None = None,
         *,
         extract_memory: bool = True,
+        stream_model: bool = False,
+        on_model_delta: Callable[[str], None] | None = None,
+        cancelled: Callable[[], bool] | None = None,
     ) -> dict[str, object]:
+        chat_started_at = time.perf_counter()
+        settings_started_at = time.perf_counter()
         self._refresh_companion_settings()
+        settings_ms = round((time.perf_counter() - settings_started_at) * 1000)
         clean_user_text = user_text.strip()
         if not clean_user_text:
             raise ValueError("message is required")
@@ -101,28 +111,61 @@ class CompanionRuntime:
         now = self.clock()
         trace_id = new_event_id("trace")
         turn_id = new_event_id("turn")
+        state_started_at = time.perf_counter()
         state = self.store.load_state()
+        state_ms = round((time.perf_counter() - state_started_at) * 1000)
+        memory_query_started_at = time.perf_counter()
         memory_hits = self.store.query_memories(clean_user_text, limit=5)
+        memory_query_ms = round((time.perf_counter() - memory_query_started_at) * 1000)
+        events_started_at = time.perf_counter()
         recent_events = self.store.read_events(limit=10)
+        events_ms = round((time.perf_counter() - events_started_at) * 1000)
+        prompt_started_at = time.perf_counter()
         prompt_package = self.prompt_builder.build(
             user_text=clean_user_text,
             history=history or [],
             state=state,
             memory_hits=memory_hits,
             recent_events=recent_events,
+            spoken_response=stream_model,
         )
+        prompt_ms = round((time.perf_counter() - prompt_started_at) * 1000)
 
         model_started_at = time.perf_counter()
+        model_ttft_ms = -1
         if self.config.mock:
             raw = mock_model_output(clean_user_text)
+            if on_model_delta is not None:
+                on_model_delta(raw)
+        elif stream_model:
+            raw_parts: list[str] = []
+            for delta in self.client.stream(prompt_package.messages):
+                if cancelled is not None and cancelled():
+                    raise ChatStreamCancelled("chat stream cancelled")
+                if not delta:
+                    continue
+                if model_ttft_ms < 0:
+                    model_ttft_ms = round((time.perf_counter() - model_started_at) * 1000)
+                    LOGGER.info("companion_reply_model_first_delta elapsed_ms=%d", model_ttft_ms)
+                raw_parts.append(delta)
+                if on_model_delta is not None:
+                    on_model_delta(delta)
+            if cancelled is not None and cancelled():
+                raise ChatStreamCancelled("chat stream cancelled")
+            raw = "".join(raw_parts)
         else:
             raw = self.client.complete(prompt_package.messages)
+        model_ms = round((time.perf_counter() - model_started_at) * 1000)
         LOGGER.info(
-            "companion_reply_model_completed elapsed_ms=%d",
-            round((time.perf_counter() - model_started_at) * 1000),
+            "companion_reply_model_completed elapsed_ms=%d ttft_ms=%d streaming=%s",
+            model_ms,
+            model_ttft_ms,
+            stream_model,
         )
 
+        parse_started_at = time.perf_counter()
         parsed = parse_model_output(raw)
+        parse_ms = round((time.perf_counter() - parse_started_at) * 1000)
         risk_flags = _risk_flags(clean_user_text, parsed.reply)
         user_event = make_event(
             "user_message",
@@ -150,6 +193,7 @@ class CompanionRuntime:
             now=now,
             actor="assistant",
         )
+        memory_extract_started_at = time.perf_counter()
         if extract_memory:
             memory_started_at = time.perf_counter()
             memory_result = self.memory_extractor.extract(
@@ -166,6 +210,8 @@ class CompanionRuntime:
             )
         else:
             memory_result = MemoryExtractionResult(records=[], mode="deferred_batch")
+        memory_extract_ms = round((time.perf_counter() - memory_extract_started_at) * 1000)
+        persist_started_at = time.perf_counter()
         with self.store.atomic():
             memory_records = [
                 self.store.write_memory(record, trace_id=trace_id, emit_audit=True)
@@ -256,8 +302,9 @@ class CompanionRuntime:
             for event in (prompt_event, user_event, model_event, assistant_event, memory_event, state_event, proactive_event):
                 self.store.append_event(event)
             self.store.save_state(state)
+        persist_ms = round((time.perf_counter() - persist_started_at) * 1000)
         proactive_signal = proactive_decision.signal
-        return {
+        result = {
             "role_thinking": parsed.role_thinking,
             "role_action": parsed.role_action,
             "reply": parsed.reply,
@@ -293,6 +340,24 @@ class CompanionRuntime:
                 "mock": self.config.mock,
             },
         }
+        LOGGER.info(
+            "companion_chat_timing total_ms=%d settings_ms=%d state_ms=%d "
+            "memory_query_ms=%d events_ms=%d prompt_ms=%d model_ms=%d model_ttft_ms=%d "
+            "parse_ms=%d memory_extract_ms=%d persist_ms=%d streaming=%s",
+            round((time.perf_counter() - chat_started_at) * 1000),
+            settings_ms,
+            state_ms,
+            memory_query_ms,
+            events_ms,
+            prompt_ms,
+            model_ms,
+            model_ttft_ms,
+            parse_ms,
+            memory_extract_ms,
+            persist_ms,
+            stream_model,
+        )
+        return result
 
     def get_state(self) -> dict[str, object]:
         return self.store.snapshot()

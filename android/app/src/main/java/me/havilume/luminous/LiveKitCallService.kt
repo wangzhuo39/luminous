@@ -23,12 +23,14 @@ import io.livekit.android.audio.AudioSwitchHandler
 import io.livekit.android.events.RoomEvent
 import io.livekit.android.events.collect
 import io.livekit.android.room.Room
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -80,6 +82,7 @@ class LiveKitCallService : Service() {
     private var reconnectCount = 0
     private var terminalStateReported = false
     private var stopping = false
+    private var agentReadySignal: CompletableDeferred<Unit>? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -130,12 +133,16 @@ class LiveKitCallService : Service() {
         acquireWakeLock()
         stopping = false
         publishState(callState("connecting"))
+        agentReadySignal = CompletableDeferred()
         val nextRoom = LiveKit.create(applicationContext)
         room = nextRoom
         observe(nextRoom)
         observeAudioDevices(nextRoom)
         try {
             nextRoom.connect(serverUrl, participantToken)
+            withTimeout(AGENT_READY_TIMEOUT_MS) {
+                agentReadySignal?.await()
+            }
             if (!nextRoom.localParticipant.setMicrophoneEnabled(true)) {
                 throw IllegalStateException("microphone publication failed")
             }
@@ -156,7 +163,11 @@ class LiveKitCallService : Service() {
                         reconnectCount += 1
                         publishState(currentState.copy(status = "reconnecting", reconnectCount = reconnectCount))
                     }
-                    is RoomEvent.Reconnected -> publishState(currentState.copy(status = "connected", message = ""))
+                    is RoomEvent.Reconnected -> {
+                        if (currentState.status == "connected") {
+                            publishState(currentState.copy(message = ""))
+                        }
+                    }
                     is RoomEvent.FailedToConnect -> failAndStop(event.error.message ?: "failed to connect")
                     is RoomEvent.Disconnected -> {
                         if (!stopping) failAndStop(event.error?.message ?: event.reason.name)
@@ -170,6 +181,9 @@ class LiveKitCallService : Service() {
                                 assistant = event.participant?.identity != active.localParticipant.identity,
                             ),
                         )
+                    }
+                    is RoomEvent.DataReceived -> event.topic?.let { topic ->
+                        handleAgentControl(topic, event.data)
                     }
                     else -> Unit
                 }
@@ -237,6 +251,8 @@ class LiveKitCallService : Service() {
     }
 
     private fun teardownRoom() {
+        agentReadySignal?.cancel()
+        agentReadySignal = null
         roomEvents?.cancel()
         roomEvents = null
         audioDeviceListener?.let { listener ->
@@ -250,6 +266,14 @@ class LiveKitCallService : Service() {
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
         publishAudioDevices(AudioDevices())
+    }
+
+    private fun handleAgentControl(topic: String, data: ByteArray) {
+        if (topic != AGENT_CONTROL_TOPIC) return
+        val payload = runCatching { JSONObject(data.toString(Charsets.UTF_8)) }.getOrNull() ?: return
+        if (payload.optString("type") == "agent_ready") {
+            agentReadySignal?.complete(Unit)
+        }
     }
 
     private fun acquireWakeLock() {
@@ -396,6 +420,8 @@ class LiveKitCallService : Service() {
         private const val CHANNEL = "luminous_voice_call"
         private const val NOTIFICATION_ID = 4101
         private const val WAKE_LOCK_TIMEOUT_MS = 4 * 60 * 60 * 1000L
+        private const val AGENT_READY_TIMEOUT_MS = 45_000L
+        private const val AGENT_CONTROL_TOPIC = "luminous.voice.control"
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         private val HTTP = OkHttpClient.Builder().retryOnConnectionFailure(true).build()
         private val CONTROL_EXECUTOR = Executors.newSingleThreadExecutor { runnable ->
